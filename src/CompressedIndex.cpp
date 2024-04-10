@@ -112,12 +112,14 @@ namespace FastaCompressor
 		{
 			if (indices[i] & (1ull << 63ull))
 			{
-				result.set(i, indices[i] ^ (1ull << 63ull));
+				size_t value = indices[i] ^ (1ull << 63ull);
+				result.set(i, value);
 			}
 			else
 			{
 				assert(indices[i] < hierarchyIndex.size());
-				result.set(i, indices[i] + pieceIndex.size());
+				size_t value = indices[i] + pieceIndex.size();
+				result.set(i, value);
 			}
 		}
 		return result;

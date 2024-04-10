@@ -33,7 +33,7 @@ namespace FastaCompressor
 		}
 		else
 		{
-			data.resize((newSize*width()+63)/64);
+			data.resize((newSize*width()+63)/64, 0);
 			realSize = newSize;
 		}
 	}
@@ -49,10 +49,10 @@ namespace FastaCompressor
 			return (data[index] >> offset) & mask;
 		}
 		size_t result = 0;
-		result = data[index] >> offset;
 		size_t bitsLeft = width() - (64 - offset);
+		result = (data[index] >> offset) << bitsLeft;
 		assert(index+1 < data.size());
-		result += data[index+1] & (mask >> bitsLeft);
+		result += data[index+1] & (mask >> (width()-bitsLeft));
 		return result;
 	}
 	void VariableWidthIntVector::set(size_t i, size_t value)
@@ -70,11 +70,11 @@ namespace FastaCompressor
 			return;
 		}
 		data[index] &= ~(mask << offset);
-		data[index] += value << offset;
+		data[index] += (value << (64 - width())) & (mask << offset);
 		size_t bitsLeft = width() - (64 - offset);
 		assert(index+1 < data.size());
-		data[index+1] &= ~(mask >> bitsLeft);
-		data[index+1] += value >> bitsLeft;
+		data[index+1] &= ~(mask >> (width()-bitsLeft));
+		data[index+1] += value & (mask >> (width()-bitsLeft));
 	}
 	size_t VariableWidthIntVector::size() const
 	{
