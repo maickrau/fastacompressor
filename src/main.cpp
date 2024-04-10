@@ -19,7 +19,7 @@ int main(int argc, char** argv)
 	{
 		countBases += read.sequence.size();
 		index.addString(read.seq_id, read.sequence);
-		realStrings.emplace_back(read.sequence);
+//		realStrings.emplace_back(read.sequence);
 	});
 	index.removeConstructionVariables();
 	index.printSizeInformation();
@@ -27,6 +27,7 @@ int main(int argc, char** argv)
 	{
 		if (!(realStrings[i] == index.getSequence(i)))
 		{
+			std::cerr << i << std::endl;
 			std::cerr << realStrings[i] << std::endl;
 			std::cerr << index.getSequence(i) << std::endl;
 		}

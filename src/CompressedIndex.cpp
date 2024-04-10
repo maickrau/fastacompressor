@@ -262,38 +262,54 @@ namespace FastaCompressor
 			countBases += key.size();
 		});
 		pieces.setMaxStringLength(k+w);
-//		VariableWidthIntVector pieceReordering;
-//		pieceReordering.setWidth(ceil(log2(pieceIndex.size()+1)));
-//		pieceReordering.resize(pieceIndex.size());
+		VariableWidthIntVector pieceReordering;
+		pieceReordering.setWidth(ceil(log2(pieceIndex.size()+1)));
+		pieceReordering.resize(pieceIndex.size());
 		pieces.reserve(pieceIndex.size(), countBases);
 		{
-			std::vector<std::string> tmp;
-			tmp.resize(pieceIndex.size());
-			pieceIndex.iterateKeyValues([&indexIsPiece, &tmp, this](const std::string key, const size_t value)
+			pieceIndex.iterateKeyValues([&indexIsPiece, &pieceReordering, this](const std::string key, const size_t value)
 			{
 				size_t index = indexIsPiece.getRank(value);
-				assert(index < tmp.size());
-				assert(tmp[index] == "");
-				tmp[index] = key;
-//				pieceReordering.set(indexIsPiece.getRank(value), pieces.size());
-//				pieces.push_back(key);
+				assert(pieceReordering.get(index) == 0);
+				pieceReordering.set(index, pieces.size());
+				pieces.push_back(key);
 			});
-			for (size_t i = 0; i < tmp.size(); i++)
-			{
-				assert(tmp[i] != "");
-				pieces.push_back(tmp[i]);
-			}
 		}
-/*		for (size_t i = 0; i < indices.size(); i++)
+		std::vector<bool> valueFound;
+		valueFound.resize(pieceIndex.size(), false);
+		for (size_t i = 0; i < pieceReordering.size(); i++)
+		{
+			assert(!valueFound[pieceReordering.get(i)]);
+			assert(pieceReordering.get(i) < valueFound.size());
+			valueFound[pieceReordering.get(i)] = true;
+		}
+		assert(pieceReordering.size() == firstHierarchicalIndex);
+		for (size_t i = 0; i < indices.size(); i++)
 		{
 			for (size_t j = 0; j < indices[i].size(); j++)
 			{
 				if (indices[i].get(j) < pieceReordering.size())
 				{
-					indices[i].set(j, pieceReordering.get(indices[i].get(j)));
+					size_t newValue = pieceReordering.get(indices[i].get(j));
+					indices[i].set(j, newValue);
+					assert(indices[i].get(j) == newValue);
 				}
 			}
-		}*/
+		}
+		for (size_t i = 0; i < hierarchyTopDownFirst.size(); i++)
+		{
+			if (hierarchyTopDownFirst.get(i) < pieceReordering.size())
+			{
+				hierarchyTopDownFirst.set(i, pieceReordering.get(hierarchyTopDownFirst.get(i)));
+			}
+		}
+		for (size_t i = 0; i < hierarchyTopDownSecond.size(); i++)
+		{
+			if (hierarchyTopDownSecond.get(i) < pieceReordering.size())
+			{
+				hierarchyTopDownSecond.set(i, pieceReordering.get(hierarchyTopDownSecond.get(i)));
+			}
+		}
 		{
 			decltype(pieceIndex) tmp;
 			std::swap(tmp, pieceIndex);
