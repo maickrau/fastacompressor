@@ -6,6 +6,7 @@
 #include <phmap.h>
 #include "VariableWidthIntVector.h"
 #include "StringContainer.h"
+#include "StringHashIndex.h"
 
 namespace FastaCompressor
 {
@@ -27,7 +28,7 @@ namespace FastaCompressor
 		std::vector<size_t> segmentFastaToPieces(const std::string& sequence);
 		std::vector<bool> seenOnce;
 		phmap::flat_hash_map<std::pair<size_t, size_t>, size_t> hierarchyIndex;
-		phmap::flat_hash_map<std::string, size_t> pieceIndex;
+		StringHashIndex pieceIndex;
 		VariableWidthIntVector hierarchyTopDownFirst;
 		VariableWidthIntVector hierarchyTopDownSecond;
 		StringContainer pieces;

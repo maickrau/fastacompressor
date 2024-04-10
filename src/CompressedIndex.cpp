@@ -46,7 +46,7 @@ namespace FastaCompressor
 			if (pieceIndex.count(kmer) == 0)
 			{
 				index = pieceIndex.size() + hierarchyIndex.size();
-				pieceIndex[kmer] = index;
+				pieceIndex.setIndex(kmer, index);
 				assert(seenOnce.size() == index);
 				seenOnce.emplace_back(false);
 			}
@@ -167,19 +167,8 @@ namespace FastaCompressor
 	}
 	size_t CompressedIndex::baseCount() const
 	{
-		size_t result = 0;
-		if (frozen())
-		{
-			return pieces.baseCount();
-		}
-		else
-		{
-			for (const auto& pair : pieceIndex)
-			{
-				result += pair.first.size();
-			}
-		}
-		return result;
+		assert(frozen());
+		return pieces.baseCount();
 	}
 	size_t CompressedIndex::maxIndex() const
 	{
@@ -200,10 +189,10 @@ namespace FastaCompressor
 		assert(!isfrozen);
 		RankBitvector indexIsPiece;
 		indexIsPiece.resize(pieceIndex.size() + hierarchyIndex.size());
-		for (const auto& pair : pieceIndex)
+		pieceIndex.iterateValues([&indexIsPiece](size_t value)
 		{
-			indexIsPiece.set(pair.second, true);
-		}
+			indexIsPiece.set(value, true);
+		});
 		indexIsPiece.buildRanks();
 		bitsPerIndex = ceil(log2(pieceIndex.size() + hierarchyIndex.size()));
 		firstHierarchicalIndex = pieceIndex.size();
@@ -268,64 +257,43 @@ namespace FastaCompressor
 			std::swap(tmp, hierarchyIndex);
 		}
 		size_t countBases = 0;
-		for (const auto& pair : pieceIndex)
+		pieceIndex.iterateKeyValues([&countBases](const std::string key, const size_t value)
 		{
-			countBases += pair.first.size();
-		}
+			countBases += key.size();
+		});
 		pieces.setMaxStringLength(k+w);
+//		VariableWidthIntVector pieceReordering;
+//		pieceReordering.setWidth(ceil(log2(pieceIndex.size()+1)));
+//		pieceReordering.resize(pieceIndex.size());
 		pieces.reserve(pieceIndex.size(), countBases);
 		{
 			std::vector<std::string> tmp;
 			tmp.resize(pieceIndex.size());
-			for (const auto& pair : pieceIndex)
+			pieceIndex.iterateKeyValues([&indexIsPiece, &tmp, this](const std::string key, const size_t value)
 			{
-				size_t index = indexIsPiece.getRank(pair.second);
+				size_t index = indexIsPiece.getRank(value);
 				assert(index < tmp.size());
 				assert(tmp[index] == "");
-				tmp[index] = pair.first;
-			}
-			size_t countMax4 = 0;
-			size_t countMax8 = 0;
-			size_t countMax16 = 0;
-			size_t countMax32 = 0;
-			size_t countMax64 = 0;
-			size_t countBigs = 0;
+				tmp[index] = key;
+//				pieceReordering.set(indexIsPiece.getRank(value), pieces.size());
+//				pieces.push_back(key);
+			});
 			for (size_t i = 0; i < tmp.size(); i++)
 			{
 				assert(tmp[i] != "");
 				pieces.push_back(tmp[i]);
-				if (tmp[i].size() < 4)
+			}
+		}
+/*		for (size_t i = 0; i < indices.size(); i++)
+		{
+			for (size_t j = 0; j < indices[i].size(); j++)
+			{
+				if (indices[i].get(j) < pieceReordering.size())
 				{
-					countMax4 += 1;
-				}
-				else if (tmp[i].size() < 8)
-				{
-					countMax8 += 1;
-				}
-				else if (tmp[i].size() < 16)
-				{
-					countMax16 += 1;
-				}
-				else if (tmp[i].size() < 32)
-				{
-					countMax32 += 1;
-				}
-				else if (tmp[i].size() < 64)
-				{
-					countMax64 += 1;
-				}
-				else
-				{
-					countBigs += 1;
+					indices[i].set(j, pieceReordering.get(indices[i].get(j)));
 				}
 			}
-			std::cerr << "max4 " << countMax4 << std::endl;
-			std::cerr << "max8 " << countMax8 << std::endl;
-			std::cerr << "max16 " << countMax16 << std::endl;
-			std::cerr << "max32 " << countMax32 << std::endl;
-			std::cerr << "max64 " << countMax64 << std::endl;
-			std::cerr << "bigs " << countBigs << std::endl;
-		}
+		}*/
 		{
 			decltype(pieceIndex) tmp;
 			std::swap(tmp, pieceIndex);
