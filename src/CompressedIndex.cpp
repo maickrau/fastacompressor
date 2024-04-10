@@ -73,7 +73,7 @@ namespace FastaCompressor
 			{
 				assert(hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 0);
 				size_t index = hierarchyIndex.size() + pieceIndex.size();
-				hierarchyIndex[std::make_pair(fixedIndices[i], fixedIndices[i+1])] = index;
+				hierarchyIndex.set(std::make_pair(fixedIndices[i], fixedIndices[i+1]), index);
 				assert(seenOnce.size() == index);
 				seenOnce.emplace_back(false);
 				result.emplace_back(index);
@@ -229,29 +229,29 @@ namespace FastaCompressor
 		hierarchyTopDownSecond.setWidth(bitsPerIndex);
 		hierarchyTopDownFirst.resize(hierarchyIndex.size());
 		hierarchyTopDownSecond.resize(hierarchyIndex.size());
-		for (auto pair : hierarchyIndex)
+		hierarchyIndex.iterateKeyValues([this, &indexIsPiece](std::pair<uint64_t, uint64_t> key, size_t value)
 		{
-			size_t index = pair.second - indexIsPiece.getRank(pair.second);
+			size_t index = value - indexIsPiece.getRank(value);
 			assert(index < hierarchyTopDownFirst.size());
 			assert(hierarchyTopDownFirst.get(index) == 0);
 			assert(hierarchyTopDownSecond.get(index) == 0);
-			if (indexIsPiece.get(pair.first.first))
+			if (indexIsPiece.get(key.first))
 			{
-				hierarchyTopDownFirst.set(index, indexIsPiece.getRank(pair.first.first));
+				hierarchyTopDownFirst.set(index, indexIsPiece.getRank(key.first));
 			}
 			else
 			{
-				hierarchyTopDownFirst.set(index, pair.first.first - indexIsPiece.getRank(pair.first.first) + firstHierarchicalIndex);
+				hierarchyTopDownFirst.set(index, key.first - indexIsPiece.getRank(key.first) + firstHierarchicalIndex);
 			}
-			if (indexIsPiece.get(pair.first.second))
+			if (indexIsPiece.get(key.second))
 			{
-				hierarchyTopDownSecond.set(index, indexIsPiece.getRank(pair.first.second));
+				hierarchyTopDownSecond.set(index, indexIsPiece.getRank(key.second));
 			}
 			else
 			{
-				hierarchyTopDownSecond.set(index, pair.first.second - indexIsPiece.getRank(pair.first.second) + firstHierarchicalIndex);
+				hierarchyTopDownSecond.set(index, key.second - indexIsPiece.getRank(key.second) + firstHierarchicalIndex);
 			}
-		}
+		});
 		{
 			decltype(hierarchyIndex) tmp;
 			std::swap(tmp, hierarchyIndex);
