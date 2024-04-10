@@ -155,7 +155,7 @@ namespace FastaCompressor
 		for (size_t i = baseIndices.size()-1; i < baseIndices.size(); i--)
 		{
 			assert(baseIndices[i] < pieces.size());
-			result += pieces[baseIndices[i]];
+			result += pieces.get(baseIndices[i]);
 		}
 		return result;
 	}
@@ -164,10 +164,7 @@ namespace FastaCompressor
 		size_t result = 0;
 		if (frozen())
 		{
-			for (size_t i = 0; i < pieces.size(); i++)
-			{
-				result += pieces[i].size();
-			}
+			return pieces.baseCount();
 		}
 		else
 		{
@@ -201,18 +198,29 @@ namespace FastaCompressor
 			decltype(seenOnce) tmp;
 			std::swap(tmp, seenOnce);
 		}
-		pieces.resize(pieceIndex.size());
+		size_t countBases = 0;
 		for (const auto& pair : pieceIndex)
 		{
-			assert(pair.second & (1ull << 63ull));
-			size_t index = (pair.second ^ (1ull << 63ull));
-			assert(index < pieces.size());
-			assert(pieces[index] == "");
-			pieces[index] = pair.first;
+			countBases += pair.first.size();
 		}
-		for (size_t i = 0; i < pieces.size(); i++)
+		pieces.setMaxStringLength(k+w);
+		pieces.reserve(pieceIndex.size(), countBases);
 		{
-			assert(pieces[i] != "");
+			std::vector<std::string> tmp;
+			tmp.resize(pieceIndex.size());
+			for (const auto& pair : pieceIndex)
+			{
+				assert(pair.second & (1ull << 63ull));
+				size_t index = (pair.second ^ (1ull << 63ull));
+				assert(index < tmp.size());
+				assert(tmp[index] == "");
+				tmp[index] = pair.first;
+			}
+			for (size_t i = 0; i < tmp.size(); i++)
+			{
+				assert(tmp[i] != "");
+				pieces.push_back(tmp[i]);
+			}
 		}
 		{
 			decltype(pieceIndex) tmp;
