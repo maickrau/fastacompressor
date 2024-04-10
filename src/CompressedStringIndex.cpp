@@ -54,7 +54,7 @@ namespace FastaCompressor
 			countIndices += readIndicesFinished[i].size();
 		}
 		size_t bitsForPieces = countIndices * bitsPerIndex;
-		size_t bitsForBases = index.baseCount() * 2;
+		size_t bitsForBases = index.baseCount() * 2 + index.pieceCount() * 17;
 		size_t bitsForHierarchy = bitsPerIndex * index.maxIndex();
 		size_t totalBases = 0;
 		for (size_t i = 0; i < readIndicesFinished.size(); i++)
@@ -64,5 +64,9 @@ namespace FastaCompressor
 		std::cerr << "bits per index: " << bitsPerIndex << std::endl;
 		std::cerr << "remade bases " << totalBases << std::endl;
 		std::cerr << "bits per bp: " << (double)(bitsForBases + bitsForPieces + bitsForHierarchy)/(double)totalBases << " (bases " << (double)bitsForBases/(double)totalBases << " pieces " << (double)bitsForPieces/(double)totalBases << " hierarchy " << (double)bitsForHierarchy/(double)totalBases << ")" << std::endl;
+		std::cerr << "expected size: " << (bitsForBases + bitsForPieces + bitsForHierarchy) / 8.0 / 1024.0 / 1024.0 / 1024.0 << " gb" << std::endl;
+		std::cerr << "bases in piece index " << index.baseCount() << " construction bytes ~" << (index.baseCount())/1024.0/1024.0/1024.0 << " gb" << std::endl;
+		std::cerr << "count in piece index " << index.pieceCount() << " construction bytes ~" <<  (index.pieceCount()*64)/1024.0/1024.0/1024.0 << " gb" << std::endl;
+		std::cerr << "hierarchy index size " << index.maxIndex() << " construction bytes ~" << (index.maxIndex()*48)/1024.0/1024.0/1024.0 << " gb" << std::endl;
 	}
 }
