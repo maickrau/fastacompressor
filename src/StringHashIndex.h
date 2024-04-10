@@ -36,12 +36,14 @@ namespace FastaCompressor
 			}
 			for (const auto& pair : biglenStrings)
 			{
-				callback(pair.first, pair.second);
+				callback(decodeStringToString(pair.first), pair.second);
 			}
 		}
 	private:
 		uint64_t encodeString(const std::string& str) const;
 		std::string decodeString(uint64_t str) const;
+		std::string encodeStringToString(const std::string& str) const;
+		std::string decodeStringToString(std::string str) const;
 		phmap::flat_hash_map<uint32_t, uint32_t> len16Strings;
 		phmap::flat_hash_map<uint64_t, size_t> len32Strings;
 		phmap::flat_hash_map<std::string, size_t> biglenStrings;

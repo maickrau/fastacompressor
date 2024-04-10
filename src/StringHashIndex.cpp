@@ -14,7 +14,8 @@ namespace FastaCompressor
 			}
 			if (len32Strings.count(encodedString) == 1) return 1;
 		}
-		if (biglenStrings.count(str) == 1) return 1;
+		auto fixstr = encodeStringToString(str);
+		if (biglenStrings.count(fixstr) == 1) return 1;
 		return 0;
 	}
 	size_t StringHashIndex::at(const std::string& str) const
@@ -29,7 +30,8 @@ namespace FastaCompressor
 			}
 			if (len32Strings.count(encodedString) == 1) return len32Strings.at(encodedString);
 		}
-		return biglenStrings.at(str);
+		auto fixstr = encodeStringToString(str);
+		return biglenStrings.at(fixstr);
 	}
 	void StringHashIndex::setIndex(const std::string& str, const size_t value)
 	{
@@ -48,8 +50,9 @@ namespace FastaCompressor
 			len32Strings[encodedString] = value;
 			return;
 		}
-		assert(biglenStrings.count(str) == 0);
-		biglenStrings[str] = value;
+		auto fixstr = encodeStringToString(str);
+		assert(biglenStrings.count(fixstr) == 0);
+		biglenStrings[fixstr] = value;
 	}
 	size_t StringHashIndex::size() const
 	{
@@ -76,6 +79,59 @@ namespace FastaCompressor
 				break;
 			}
 		}
+		return result;
+	}
+	std::string StringHashIndex::encodeStringToString(const std::string& str) const
+	{
+		std::string result;
+		result.push_back(1);
+		for (size_t i = 0; i < str.size(); i++)
+		{
+			size_t c = 0;
+			switch(str[i])
+			{
+			case 'A':
+				c = 0;
+				break;
+			case 'C':
+				c = 1;
+				break;
+			case 'G':
+				c = 2;
+				break;
+			case 'T':
+				c = 3;
+				break;
+			default:
+				assert(false);
+			}
+			result.back() <<= 2;
+			result.back() += c;
+			if (i % 4 == 3) result.push_back(1);
+		}
+		return result;
+	}
+	std::string StringHashIndex::decodeStringToString(std::string str) const
+	{
+		std::string result;
+		for (size_t i = 0; i < str.size()-1; i++)
+		{
+			result += "ACGT"[(str[i] >> 6) & 3];
+			result += "ACGT"[(str[i] >> 4) & 3];
+			result += "ACGT"[(str[i] >> 2) & 3];
+			result += "ACGT"[str[i] & 3];
+		}
+		uint8_t last = str.back();
+		size_t pickedInLast = 0;
+		while (last != 1)
+		{
+			result += "ACGT"[last & 3];
+			pickedInLast += 1;
+			last >>= 2;
+			assert(last != 0);
+		}
+		assert(pickedInLast <= 3);
+		std::reverse(result.end() - pickedInLast, result.end());
 		return result;
 	}
 	std::string StringHashIndex::decodeString(uint64_t val) const
