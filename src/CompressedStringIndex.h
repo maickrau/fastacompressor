@@ -18,7 +18,8 @@ namespace FastaCompressor
 	private:
 		CompressedIndex index;
 		std::vector<std::string> readNames;
-		std::vector<std::vector<size_t>> readIndices;
+		std::vector<std::vector<size_t>> readIndicesUnbuilt;
+		std::vector<VariableWidthIntVector> readIndicesFinished;
 	};
 }
 

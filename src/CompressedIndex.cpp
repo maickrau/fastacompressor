@@ -7,10 +7,12 @@ namespace FastaCompressor
 		seenOnce(),
 		hierarchyIndex(),
 		pieceIndex(),
-		hierarchyTopDown(),
+		hierarchyTopDownFirst(),
+		hierarchyTopDownSecond(),
 		pieces(),
 		firstHierarchicalIndex(std::numeric_limits<size_t>::max()),
 		isfrozen(false),
+		bitsPerIndex(0),
 		k(k),
 		w(w)
 	{
@@ -100,25 +102,35 @@ namespace FastaCompressor
 		}
 		return result;
 	}
-	std::vector<size_t> CompressedIndex::convertToPostConstructionFormat(const std::vector<size_t>& indices) const
+	VariableWidthIntVector CompressedIndex::convertToPostConstructionFormat(const std::vector<size_t>& indices) const
 	{
 		assert(!frozen());
-		std::vector<size_t> result = indices;
+		VariableWidthIntVector result;
+		result.setWidth(ceil(log2(pieceIndex.size() + hierarchyIndex.size())));
+		result.resize(indices.size());
 		for (size_t i = 0; i < result.size(); i++)
 		{
-			if (result[i] & (1ull << 63ull))
+			if (indices[i] & (1ull << 63ull))
 			{
-				result[i] ^= (1ull << 63ull);
-				assert(result[i] < pieceIndex.size());
+				result.set(i, indices[i] ^ (1ull << 63ull));
 			}
 			else
 			{
-				assert(result[i] < hierarchyIndex.size());
-				result[i] += pieceIndex.size();
-				assert(result[i] < pieceIndex.size() + hierarchyIndex.size());
+				assert(indices[i] < hierarchyIndex.size());
+				result.set(i, indices[i] + pieceIndex.size());
 			}
 		}
 		return result;
+	}
+	std::string CompressedIndex::getString(const VariableWidthIntVector& indices) const
+	{
+		std::vector<size_t> fixed;
+		fixed.reserve(indices.size());
+		for (size_t i = 0; i < indices.size(); i++)
+		{
+			fixed.emplace_back(indices.get(i));
+		}
+		return getString(fixed);
 	}
 	std::string CompressedIndex::getString(const std::vector<size_t>& indices) const
 	{
@@ -131,10 +143,10 @@ namespace FastaCompressor
 			while (hierarchyIndices.back() >= firstHierarchicalIndex)
 			{
 				size_t index = hierarchyIndices.back() - firstHierarchicalIndex;
-				assert(index < hierarchyTopDown.size());
+				assert(index < hierarchyTopDownFirst.size());
 				hierarchyIndices.pop_back();
-				hierarchyIndices.emplace_back(hierarchyTopDown[index].first);
-				hierarchyIndices.emplace_back(hierarchyTopDown[index].second);
+				hierarchyIndices.emplace_back(hierarchyTopDownFirst.get(index));
+				hierarchyIndices.emplace_back(hierarchyTopDownSecond.get(index));
 			}
 			assert(hierarchyIndices.back() < firstHierarchicalIndex);
 			baseIndices.push_back(hierarchyIndices.back());
@@ -168,7 +180,7 @@ namespace FastaCompressor
 	}
 	size_t CompressedIndex::maxIndex() const
 	{
-		if (frozen()) return hierarchyTopDown.size() + firstHierarchicalIndex;
+		if (frozen()) return hierarchyTopDownFirst.size() + firstHierarchicalIndex;
 		return pieceIndex.size() + hierarchyIndex.size();
 	}
 	size_t CompressedIndex::pieceCount() const
@@ -183,6 +195,8 @@ namespace FastaCompressor
 	void CompressedIndex::removeConstructionVariables()
 	{
 		assert(!isfrozen);
+		bitsPerIndex = ceil(log2(pieceIndex.size() + hierarchyIndex.size()));
+		assert(bitsPerIndex > 0);
 		{
 			decltype(seenOnce) tmp;
 			std::swap(tmp, seenOnce);
@@ -205,27 +219,30 @@ namespace FastaCompressor
 			std::swap(tmp, pieceIndex);
 		}
 		firstHierarchicalIndex = pieces.size();
-		hierarchyTopDown.resize(hierarchyIndex.size(), std::make_pair(std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max()));
+		hierarchyTopDownFirst.setWidth(bitsPerIndex);
+		hierarchyTopDownSecond.setWidth(bitsPerIndex);
+		hierarchyTopDownFirst.resize(hierarchyIndex.size());
+		hierarchyTopDownSecond.resize(hierarchyIndex.size());
 		for (auto pair : hierarchyIndex)
 		{
-			assert(pair.second < hierarchyTopDown.size());
-			assert(hierarchyTopDown[pair.second].first == std::numeric_limits<size_t>::max());
-			assert(hierarchyTopDown[pair.second].second == std::numeric_limits<size_t>::max());
+			assert(pair.second < hierarchyTopDownFirst.size());
+			assert(hierarchyTopDownFirst.get(pair.second) == 0);
+			assert(hierarchyTopDownSecond.get(pair.second) == 0);
 			if (pair.first.first & (1ull << 63ull))
 			{
-				hierarchyTopDown[pair.second].first = pair.first.first ^ (1ull << 63ull);
+				hierarchyTopDownFirst.set(pair.second, pair.first.first ^ (1ull << 63ull));
 			}
 			else
 			{
-				hierarchyTopDown[pair.second].first = pair.first.first + firstHierarchicalIndex;
+				hierarchyTopDownFirst.set(pair.second, pair.first.first + firstHierarchicalIndex);
 			}
 			if (pair.first.second & (1ull << 63ull))
 			{
-				hierarchyTopDown[pair.second].second = pair.first.second ^ (1ull << 63ull);
+				hierarchyTopDownSecond.set(pair.second, pair.first.second ^ (1ull << 63ull));
 			}
 			else
 			{
-				hierarchyTopDown[pair.second].second = pair.first.second + firstHierarchicalIndex;
+				hierarchyTopDownSecond.set(pair.second, pair.first.second + firstHierarchicalIndex);
 			}
 		}
 		{
