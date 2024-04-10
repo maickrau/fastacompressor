@@ -7,10 +7,10 @@ SRCDIR=src
 
 LIBS=`pkg-config --libs zlib`
 
-_DEPS = fastqloader.h MinimizerIterator.h CommonUtils.h CompressedIndex.h CompressedStringIndex.h VariableWidthIntVector.h StringContainer.h
+_DEPS = fastqloader.h MinimizerIterator.h CommonUtils.h CompressedIndex.h CompressedStringIndex.h VariableWidthIntVector.h StringContainer.h RankBitvector.h
 DEPS = $(patsubst %, $(SRCDIR)/%, $(_DEPS))
 
-_OBJ = fastqloader.o MinimizerIterator.o CommonUtils.o CompressedIndex.o CompressedStringIndex.o VariableWidthIntVector.o StringContainer.o
+_OBJ = fastqloader.o MinimizerIterator.o CommonUtils.o CompressedIndex.o CompressedStringIndex.o VariableWidthIntVector.o StringContainer.o RankBitvector.o
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
 LINKFLAGS = $(CPPFLAGS) -Wl,-Bstatic $(LIBS) -Wl,-Bdynamic -Wl,--as-needed -lpthread -pthread -static-libstdc++

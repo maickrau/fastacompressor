@@ -1,5 +1,7 @@
+#include <iostream>
 #include "CompressedIndex.h"
 #include "MinimizerIterator.h"
+#include "RankBitvector.h"
 
 namespace FastaCompressor
 {
@@ -43,14 +45,15 @@ namespace FastaCompressor
 			size_t index = 0;
 			if (pieceIndex.count(kmer) == 0)
 			{
-				index = pieceIndex.size() + (1ull << 63ull);
+				index = pieceIndex.size() + hierarchyIndex.size();
 				pieceIndex[kmer] = index;
+				assert(seenOnce.size() == index);
+				seenOnce.emplace_back(false);
 			}
 			else
 			{
 				index = pieceIndex.at(kmer);
 			}
-			assert(index & (1ull << 63ull));
 			result.emplace_back(index);
 		}
 		return result;
@@ -66,22 +69,46 @@ namespace FastaCompressor
 			{
 				result.emplace_back(hierarchyIndex.at(std::make_pair(fixedIndices[i], fixedIndices[i+1])));
 			}
-			else if (seenOnce.count(fixedIndices[i]) == 1 && seenOnce.count(fixedIndices[i+1]) == 1)
+			else if (seenOnce[fixedIndices[i]] && seenOnce[fixedIndices[i+1]])
 			{
 				assert(hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 0);
-				size_t index = hierarchyIndex.size();
+				size_t index = hierarchyIndex.size() + pieceIndex.size();
 				hierarchyIndex[std::make_pair(fixedIndices[i], fixedIndices[i+1])] = index;
+				assert(seenOnce.size() == index);
+				seenOnce.emplace_back(false);
 				result.emplace_back(index);
 			}
 			else
 			{
-				seenOnce.insert(fixedIndices[i]);
-				seenOnce.insert(fixedIndices[i+1]);
+				seenOnce[fixedIndices[i]] = true;
+				seenOnce[fixedIndices[i+1]] = true;
 				result.emplace_back(fixedIndices[i]);
 				result.emplace_back(fixedIndices[i+1]);
 			}
 		}
 		if (fixedIndices.size() % 2 == 1) result.emplace_back(fixedIndices.back());
+		return result;
+	}
+	VariableWidthIntVector CompressedIndex::hierarchizeIndices(const VariableWidthIntVector& indices) const
+	{
+		std::vector<size_t> tmp;
+		for (size_t i = 0; i < indices.size(); i++)
+		{
+			tmp.emplace_back(i);
+		}
+		auto tmp2 = hierarchizeIndices(tmp);
+		size_t maxHere = 0;
+		VariableWidthIntVector result;
+		for (size_t val : tmp2)
+		{
+			maxHere = std::max(maxHere, val);
+		}
+		result.setWidth(ceil(log2(maxHere+1)));
+		result.resize(tmp2.size());
+		for (size_t i = 0; i < tmp2.size(); i++)
+		{
+			result.set(i, tmp2[i]);
+		}
 		return result;
 	}
 	std::vector<size_t> CompressedIndex::hierarchizeIndices(const std::vector<size_t>& indices) const
@@ -90,36 +117,13 @@ namespace FastaCompressor
 		for (size_t i = 0; i < indices.size(); i++)
 		{
 			result.emplace_back(indices[i]);
-			assert(indices[i] < hierarchyIndex.size() || (indices[i] & (1ull << 63ull)));
 			while (result.size() >= 2 && hierarchyIndex.count(std::make_pair(result[result.size()-2], result[result.size()-1])) == 1)
 			{
 				size_t replacement = hierarchyIndex.at(std::make_pair(result[result.size()-2], result[result.size()-1]));
-				assert(replacement < hierarchyIndex.size());
+				assert(replacement < hierarchyIndex.size() + pieceIndex.size());
 				result.pop_back();
 				result.pop_back();
 				result.emplace_back(replacement);
-			}
-		}
-		return result;
-	}
-	VariableWidthIntVector CompressedIndex::convertToPostConstructionFormat(const std::vector<size_t>& indices) const
-	{
-		assert(!frozen());
-		VariableWidthIntVector result;
-		result.setWidth(ceil(log2(pieceIndex.size() + hierarchyIndex.size())));
-		result.resize(indices.size());
-		for (size_t i = 0; i < result.size(); i++)
-		{
-			if (indices[i] & (1ull << 63ull))
-			{
-				size_t value = indices[i] ^ (1ull << 63ull);
-				result.set(i, value);
-			}
-			else
-			{
-				assert(indices[i] < hierarchyIndex.size());
-				size_t value = indices[i] + pieceIndex.size();
-				result.set(i, value);
 			}
 		}
 		return result;
@@ -191,10 +195,42 @@ namespace FastaCompressor
 	{
 		return isfrozen;
 	}
-	void CompressedIndex::removeConstructionVariables()
+	void CompressedIndex::removeConstructionVariables(std::vector<VariableWidthIntVector>& indices)
 	{
 		assert(!isfrozen);
+		RankBitvector indexIsPiece;
+		indexIsPiece.resize(pieceIndex.size() + hierarchyIndex.size());
+		for (const auto& pair : pieceIndex)
+		{
+			indexIsPiece.set(pair.second, true);
+		}
+		indexIsPiece.buildRanks();
 		bitsPerIndex = ceil(log2(pieceIndex.size() + hierarchyIndex.size()));
+		firstHierarchicalIndex = pieceIndex.size();
+		for (size_t i = 0; i < indices.size(); i++)
+		{
+			VariableWidthIntVector replacement;
+			replacement.setWidth(bitsPerIndex);
+			std::vector<size_t> tmp;
+			for (size_t j = 0; j < indices[i].size(); j++)
+			{
+				tmp.emplace_back(indices[i].get(j));
+			}
+			tmp = hierarchizeIndices(tmp);
+			replacement.resize(tmp.size());
+			for (size_t j = 0; j < tmp.size(); j++)
+			{
+				if (indexIsPiece.get(tmp[j]))
+				{
+					replacement.set(j, indexIsPiece.getRank(tmp[j]));
+				}
+				else
+				{
+					replacement.set(j, tmp[j] - indexIsPiece.getRank(tmp[j]) + firstHierarchicalIndex);
+				}
+			}
+			std::swap(replacement, indices[i]);
+		}
 		assert(bitsPerIndex > 0);
 		{
 			decltype(seenOnce) tmp;
@@ -212,47 +248,82 @@ namespace FastaCompressor
 			tmp.resize(pieceIndex.size());
 			for (const auto& pair : pieceIndex)
 			{
-				assert(pair.second & (1ull << 63ull));
-				size_t index = (pair.second ^ (1ull << 63ull));
+				size_t index = indexIsPiece.getRank(pair.second);
 				assert(index < tmp.size());
 				assert(tmp[index] == "");
 				tmp[index] = pair.first;
 			}
+			size_t countMax4 = 0;
+			size_t countMax8 = 0;
+			size_t countMax16 = 0;
+			size_t countMax32 = 0;
+			size_t countMax64 = 0;
+			size_t countBigs = 0;
 			for (size_t i = 0; i < tmp.size(); i++)
 			{
 				assert(tmp[i] != "");
 				pieces.push_back(tmp[i]);
+				if (tmp[i].size() < 4)
+				{
+					countMax4 += 1;
+				}
+				else if (tmp[i].size() < 8)
+				{
+					countMax8 += 1;
+				}
+				else if (tmp[i].size() < 16)
+				{
+					countMax16 += 1;
+				}
+				else if (tmp[i].size() < 32)
+				{
+					countMax32 += 1;
+				}
+				else if (tmp[i].size() < 64)
+				{
+					countMax64 += 1;
+				}
+				else
+				{
+					countBigs += 1;
+				}
 			}
+			std::cerr << "max4 " << countMax4 << std::endl;
+			std::cerr << "max8 " << countMax8 << std::endl;
+			std::cerr << "max16 " << countMax16 << std::endl;
+			std::cerr << "max32 " << countMax32 << std::endl;
+			std::cerr << "max64 " << countMax64 << std::endl;
+			std::cerr << "bigs " << countBigs << std::endl;
 		}
 		{
 			decltype(pieceIndex) tmp;
 			std::swap(tmp, pieceIndex);
 		}
-		firstHierarchicalIndex = pieces.size();
 		hierarchyTopDownFirst.setWidth(bitsPerIndex);
 		hierarchyTopDownSecond.setWidth(bitsPerIndex);
 		hierarchyTopDownFirst.resize(hierarchyIndex.size());
 		hierarchyTopDownSecond.resize(hierarchyIndex.size());
 		for (auto pair : hierarchyIndex)
 		{
-			assert(pair.second < hierarchyTopDownFirst.size());
-			assert(hierarchyTopDownFirst.get(pair.second) == 0);
-			assert(hierarchyTopDownSecond.get(pair.second) == 0);
-			if (pair.first.first & (1ull << 63ull))
+			size_t index = pair.second - indexIsPiece.getRank(pair.second);
+			assert(index < hierarchyTopDownFirst.size());
+			assert(hierarchyTopDownFirst.get(index) == 0);
+			assert(hierarchyTopDownSecond.get(index) == 0);
+			if (indexIsPiece.get(pair.first.first))
 			{
-				hierarchyTopDownFirst.set(pair.second, pair.first.first ^ (1ull << 63ull));
+				hierarchyTopDownFirst.set(index, indexIsPiece.getRank(pair.first.first));
 			}
 			else
 			{
-				hierarchyTopDownFirst.set(pair.second, pair.first.first + firstHierarchicalIndex);
+				hierarchyTopDownFirst.set(index, pair.first.first - indexIsPiece.getRank(pair.first.first) + firstHierarchicalIndex);
 			}
-			if (pair.first.second & (1ull << 63ull))
+			if (indexIsPiece.get(pair.first.second))
 			{
-				hierarchyTopDownSecond.set(pair.second, pair.first.second ^ (1ull << 63ull));
+				hierarchyTopDownSecond.set(index, indexIsPiece.getRank(pair.first.second));
 			}
 			else
 			{
-				hierarchyTopDownSecond.set(pair.second, pair.first.second + firstHierarchicalIndex);
+				hierarchyTopDownSecond.set(index, pair.first.second - indexIsPiece.getRank(pair.first.second) + firstHierarchicalIndex);
 			}
 		}
 		{

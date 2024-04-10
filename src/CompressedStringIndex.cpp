@@ -6,15 +6,26 @@ namespace FastaCompressor
 	CompressedStringIndex::CompressedStringIndex(size_t k, size_t w) :
 		index(k, w),
 		readNames(),
-		readIndicesUnbuilt(),
-		readIndicesFinished()
+		readIndices()
 	{
 	}
 	size_t CompressedStringIndex::addString(const std::string& readName, const std::string& readSequence)
 	{
 		size_t result = readNames.size();
 		readNames.emplace_back(readName);
-		readIndicesUnbuilt.emplace_back(index.addString(readSequence));
+		std::vector<size_t> indices = index.addString(readSequence);
+		size_t maxIndex = 0;
+		for (size_t val : indices)
+		{
+			maxIndex = std::max(maxIndex, val);
+		}
+		readIndices.emplace_back();
+		readIndices.back().setWidth(ceil(log2(maxIndex+1)));
+		readIndices.back().resize(indices.size());
+		for (size_t i = 0; i < indices.size(); i++)
+		{
+			readIndices.back().set(i, indices[i]);
+		}
 		return result;
 	}
 	std::string CompressedStringIndex::getName(const size_t i) const
@@ -24,22 +35,13 @@ namespace FastaCompressor
 	}
 	std::string CompressedStringIndex::getSequence(const size_t i) const
 	{
-		assert(i < readIndicesFinished.size());
+		assert(i < readIndices.size());
 		assert(index.frozen());
-		return index.getString(readIndicesFinished[i]);
+		return index.getString(readIndices[i]);
 	}
 	void CompressedStringIndex::removeConstructionVariables()
 	{
-		readIndicesFinished.resize(readIndicesUnbuilt.size());
-		for (size_t i = 0; i < readIndicesUnbuilt.size(); i++)
-		{
-			readIndicesFinished[i] = index.convertToPostConstructionFormat(index.hierarchizeIndices(readIndicesUnbuilt[i]));
-		}
-		{
-			decltype(readIndicesUnbuilt) tmp;
-			std::swap(tmp, readIndicesUnbuilt);
-		}
-		index.removeConstructionVariables();
+		index.removeConstructionVariables(readIndices);
 	}
 	size_t CompressedStringIndex::size() const
 	{
@@ -49,17 +51,17 @@ namespace FastaCompressor
 	{
 		size_t bitsPerIndex = ceil(log2(index.maxIndex()));
 		size_t countIndices = 0;
-		for (size_t i = 0; i < readIndicesFinished.size(); i++)
+		for (size_t i = 0; i < readIndices.size(); i++)
 		{
-			countIndices += readIndicesFinished[i].size();
+			countIndices += readIndices[i].size();
 		}
 		size_t bitsForPieces = countIndices * bitsPerIndex;
 		size_t bitsForBases = index.baseCount() * 2 + index.pieceCount() * 17;
 		size_t bitsForHierarchy = bitsPerIndex * index.maxIndex();
 		size_t totalBases = 0;
-		for (size_t i = 0; i < readIndicesFinished.size(); i++)
+		for (size_t i = 0; i < readIndices.size(); i++)
 		{
-			totalBases += index.getString(readIndicesFinished[i]).size();
+			totalBases += index.getString(readIndices[i]).size();
 		}
 		std::cerr << "bits per index: " << bitsPerIndex << std::endl;
 		std::cerr << "remade bases " << totalBases << std::endl;

@@ -15,17 +15,17 @@ namespace FastaCompressor
 		CompressedIndex(size_t k, size_t w);
 		std::vector<size_t> addString(const std::string& str);
 		std::vector<size_t> hierarchizeIndices(const std::vector<size_t>& indices) const;
-		VariableWidthIntVector convertToPostConstructionFormat(const std::vector<size_t>& indices) const;
+		VariableWidthIntVector hierarchizeIndices(const VariableWidthIntVector& indices) const;
 		std::string getString(const std::vector<size_t>& indices) const;
 		std::string getString(const VariableWidthIntVector& indices) const;
 		size_t maxIndex() const;
 		size_t pieceCount() const;
 		size_t baseCount() const;
-		void removeConstructionVariables();
+		void removeConstructionVariables(std::vector<VariableWidthIntVector>& indices);
 		bool frozen() const;
 	private:
 		std::vector<size_t> segmentFastaToPieces(const std::string& sequence);
-		phmap::flat_hash_set<size_t> seenOnce;
+		std::vector<bool> seenOnce;
 		phmap::flat_hash_map<std::pair<size_t, size_t>, size_t> hierarchyIndex;
 		phmap::flat_hash_map<std::string, size_t> pieceIndex;
 		VariableWidthIntVector hierarchyTopDownFirst;
