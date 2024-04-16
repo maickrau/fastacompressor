@@ -19,7 +19,7 @@ int main(int argc, char** argv)
 	{
 		countBases += read.sequence.size();
 		index.addString(read.seq_id, read.sequence);
-//		realStrings.emplace_back(read.sequence);
+		realStrings.emplace_back(read.sequence);
 	});
 	index.removeConstructionVariables();
 	index.printSizeInformation();
@@ -32,5 +32,13 @@ int main(int argc, char** argv)
 			std::cerr << index.getSequence(i) << std::endl;
 		}
 		assert(realStrings[i] == index.getSequence(i));
+		if (realStrings[i].size() > 20000)
+		{
+			assert(realStrings[i].substr(10000, 10000) == index.getSubstring(i, 10000, 10000));
+		}
+		if (realStrings[i].size() > 40000)
+		{
+			assert(realStrings[i].substr(30000, 10000) == index.getSubstring(i, 30000, 10000));
+		}
 	}
 }

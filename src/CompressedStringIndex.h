@@ -12,6 +12,7 @@ namespace FastaCompressor
 		size_t addString(const std::string& readName, const std::string& readSequence);
 		std::string getName(const size_t index) const;
 		std::string getSequence(const size_t index) const;
+		std::string getSubstring(const size_t index, const size_t startPos, const size_t length) const;
 		void removeConstructionVariables();
 		size_t size() const;
 		void printSizeInformation() const;

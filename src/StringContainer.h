@@ -16,6 +16,7 @@ namespace FastaCompressor
 		void reserve(size_t countStrings, size_t countBps);
 		void push_back(const std::string& str);
 		std::string get(size_t index) const;
+		size_t pieceSize(size_t index) const;
 		size_t size() const;
 		size_t baseCount() const;
 	private:

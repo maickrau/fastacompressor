@@ -74,6 +74,16 @@ namespace FastaCompressor
 	{
 		return smallOffsets.back() + bigOffsets.back();
 	}
+	size_t StringContainer::pieceSize(size_t index) const
+	{
+		size_t startpos = 0;
+		if (index > 0)
+		{
+			startpos = (size_t)smallOffsets[index-1] + bigOffsets[(index-1)/bigOffsetEveryNSmallOffsets()];
+		}
+		size_t endpos = (size_t)smallOffsets[index] + bigOffsets[(index)/bigOffsetEveryNSmallOffsets()];
+		return endpos - startpos;
+	}
 	std::string StringContainer::get(size_t index) const
 	{
 		assert(index < size());
