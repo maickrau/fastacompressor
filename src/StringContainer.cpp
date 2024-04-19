@@ -38,6 +38,7 @@ namespace FastaCompressor
 		}
 		for (size_t i = 0; i < str.size(); i++)
 		{
+			assert(index/32 < bits.size());
 			switch(str[i])
 			{
 			case 'a':
@@ -59,10 +60,10 @@ namespace FastaCompressor
 				assert(false);
 			}
 			index += 1;
-			assert(index/32 < bits.size());
 		}
 		if (size() % bigOffsetEveryNSmallOffsets() == 0)
 		{
+			assert(size() / bigOffsetEveryNSmallOffsets() < bigOffsets.size());
 			bigOffsets[size() / bigOffsetEveryNSmallOffsets()] = index;
 		}
 		size_t smallpos = index - bigOffsets[size() / bigOffsetEveryNSmallOffsets()];
