@@ -72,7 +72,7 @@ namespace MinimizerIterator
 		const size_t mask = ~(0xFFFFFFFFFFFFFFFF << (minimizerLength * 2));
 		assert(mask == pow(4, minimizerLength)-1);
 		size_t offset = 0;
-		std::deque<std::tuple<size_t, size_t, size_t>> window;
+		thread_local std::vector<std::tuple<size_t, size_t, size_t>> window;
 	start:
 		while (offset < str.size() && !validChar[str[offset]]) offset++;
 		if (offset + windowSize > str.size()) return;
@@ -120,29 +120,29 @@ namespace MinimizerIterator
 			kmer &= mask;
 			kmer |= charToInt(str[offset + i]);
 			auto hashed = hash(kmer);
-			size_t oldMinimum = std::get<2>(window.front());
+			size_t oldMinimum = std::get<2>(window[0]);
 			bool frontPopped = false;
-			while (!window.empty() && std::get<0>(window.front()) <= offset + i - realWindow)
+			while (!window.empty() && std::get<0>(window[0]) <= offset + i - realWindow)
 			{
 				frontPopped = true;
-				window.pop_front();
+				window.erase(window.begin());
 			}
 			if (frontPopped)
 			{
-				while (window.size() >= 2 && std::get<2>(window.front()) == std::get<2>(*(window.begin()+1))) window.pop_front();
+				while (window.size() >= 2 && std::get<2>(window[0]) == std::get<2>(*(window.begin()+1))) window.erase(window.begin());
 			}
 			while (!window.empty() && std::get<2>(window.back()) > hashed) window.pop_back();
 			window.emplace_back(offset+i, kmer, hashed);
-			if (std::get<2>(window.front()) != oldMinimum)
+			if (std::get<2>(window[0]) != oldMinimum)
 			{
 				auto iter = window.begin();
-				while (iter != window.end() && std::get<2>(*iter) == std::get<2>(window.front()))
+				while (iter != window.end() && std::get<2>(*iter) == std::get<2>(window[0]))
 				{
 					callback(std::get<0>(*iter), std::get<1>(*iter));
 					++iter;
 				}
 			}
-			else if (std::get<2>(window.back()) == std::get<2>(window.front()))
+			else if (std::get<2>(window.back()) == std::get<2>(window[0]))
 			{
 				callback(std::get<0>(window.back()), std::get<1>(window.back()));
 			}
