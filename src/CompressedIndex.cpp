@@ -159,6 +159,16 @@ namespace FastaCompressor
 		}
 		return result;
 	}
+	std::string CompressedIndex::getSubstring(const VariableWidthIntVector& indices, const size_t startPos, const size_t length) const
+	{
+		std::vector<size_t> fixed;
+		fixed.reserve(indices.size());
+		for (size_t i = 0; i < indices.size(); i++)
+		{
+			fixed.emplace_back(indices.get(i));
+		}
+		return getSubstring(fixed, startPos, length);
+	}
 	std::string CompressedIndex::getString(const VariableWidthIntVector& indices) const
 	{
 		std::vector<size_t> fixed;
@@ -168,6 +178,55 @@ namespace FastaCompressor
 			fixed.emplace_back(indices.get(i));
 		}
 		return getString(fixed);
+	}
+	std::string CompressedIndex::getSubstring(const std::vector<size_t>& indices, const size_t startPos, const size_t length) const
+	{
+		assert(frozen());
+		std::string result;
+		std::vector<size_t> baseIndices;
+		std::vector<size_t> hierarchyIndices = indices;
+		while (hierarchyIndices.size() > 0)
+		{
+			while (hierarchyIndices.back() >= firstHierarchicalIndex)
+			{
+				size_t index = hierarchyIndices.back() - firstHierarchicalIndex;
+				assert(index < hierarchyTopDownFirst.size());
+				hierarchyIndices.pop_back();
+				hierarchyIndices.emplace_back(hierarchyTopDownFirst.get(index));
+				hierarchyIndices.emplace_back(hierarchyTopDownSecond.get(index));
+			}
+			assert(hierarchyIndices.back() < firstHierarchicalIndex);
+			baseIndices.push_back(hierarchyIndices.back());
+			hierarchyIndices.pop_back();
+		}
+		size_t currentPos = 0;
+		for (size_t i = baseIndices.size()-1; i < baseIndices.size(); i--)
+		{
+			assert(baseIndices[i] < pieces.size());
+			size_t pieceSize = pieces.pieceSize(baseIndices[i]);
+			if (currentPos + pieceSize <= startPos)
+			{
+				currentPos += pieceSize;
+				continue;
+			}
+			result += pieces.get(baseIndices[i]);
+			if (currentPos < startPos)
+			{
+				assert(result.size() > startPos-currentPos);
+				result.erase(result.begin(), result.begin()+(startPos-currentPos));
+			}
+			currentPos += pieceSize;
+			if (currentPos >= startPos+length)
+			{
+				if (currentPos > startPos+length)
+				{
+					assert(result.size() > currentPos-(startPos+length));
+					result.erase(result.end()-(currentPos-(startPos+length)), result.end());
+				}
+				break;
+			}
+		}
+		return result;
 	}
 	std::string CompressedIndex::getString(const std::vector<size_t>& indices) const
 	{

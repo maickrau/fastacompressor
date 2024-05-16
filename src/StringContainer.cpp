@@ -38,6 +38,7 @@ namespace FastaCompressor
 		}
 		for (size_t i = 0; i < str.size(); i++)
 		{
+			assert(index/32 < bits.size());
 			switch(str[i])
 			{
 			case 'a':
@@ -59,10 +60,10 @@ namespace FastaCompressor
 				assert(false);
 			}
 			index += 1;
-			assert(index/32 < bits.size());
 		}
 		if (size() % bigOffsetEveryNSmallOffsets() == 0)
 		{
+			assert(size() / bigOffsetEveryNSmallOffsets() < bigOffsets.size());
 			bigOffsets[size() / bigOffsetEveryNSmallOffsets()] = index;
 		}
 		size_t smallpos = index - bigOffsets[size() / bigOffsetEveryNSmallOffsets()];
@@ -73,6 +74,16 @@ namespace FastaCompressor
 	size_t StringContainer::baseCount() const
 	{
 		return smallOffsets.back() + bigOffsets.back();
+	}
+	size_t StringContainer::pieceSize(size_t index) const
+	{
+		size_t startpos = 0;
+		if (index > 0)
+		{
+			startpos = (size_t)smallOffsets[index-1] + bigOffsets[(index-1)/bigOffsetEveryNSmallOffsets()];
+		}
+		size_t endpos = (size_t)smallOffsets[index] + bigOffsets[(index)/bigOffsetEveryNSmallOffsets()];
+		return endpos - startpos;
 	}
 	std::string StringContainer::get(size_t index) const
 	{

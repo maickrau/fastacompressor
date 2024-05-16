@@ -21,6 +21,8 @@ namespace FastaCompressor
 		VariableWidthIntVector hierarchizeIndices(const VariableWidthIntVector& indices) const;
 		std::string getString(const std::vector<size_t>& indices) const;
 		std::string getString(const VariableWidthIntVector& indices) const;
+		std::string getSubstring(const std::vector<size_t>& indices, const size_t startPos, const size_t length) const;
+		std::string getSubstring(const VariableWidthIntVector& indices, const size_t startPos, const size_t length) const;
 		size_t maxIndex() const;
 		size_t pieceCount() const;
 		size_t baseCount() const;

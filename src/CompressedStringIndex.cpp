@@ -67,6 +67,12 @@ namespace FastaCompressor
 		assert(i < readNames.size());
 		return readNames[i];
 	}
+	std::string CompressedStringIndex::getSubstring(const size_t i, const size_t startPos, const size_t length) const
+	{
+		assert(i < readIndices.size());
+		assert(index.frozen());
+		return index.getSubstring(readIndices[i], startPos, length);
+	}
 	std::string CompressedStringIndex::getSequence(const size_t i) const
 	{
 		assert(i < readIndices.size());

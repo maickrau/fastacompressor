@@ -4,6 +4,7 @@ CPPFLAGS=-Wall -Wextra -std=c++17 -O3 -g -Izstr/src -Iparallel-hashmap/parallel_
 ODIR=obj
 BINDIR=bin
 SRCDIR=src
+LIBDIR=lib
 
 LIBS=`pkg-config --libs zlib`
 
@@ -19,6 +20,14 @@ VERSION := Branch $(shell git rev-parse --abbrev-ref HEAD) commit $(shell git re
 
 $(shell mkdir -p bin)
 $(shell mkdir -p obj)
+$(shell mkdir -p lib)
+
+all: $(BINDIR)/fastacompress $(LIBDIR)/fastacompress.a $(BINDIR)/fastacompress_multithread
+
+lib: $(LIBDIR)/fastacompress.a
+
+$(LIBDIR)/fastacompress.a: $(OBJ) $(DEPS)
+	ar rvs $@ $(OBJ) $^
 
 $(BINDIR)/fastacompress: $(OBJ) $(ODIR)/main.o
 	$(GPP) -o $@ $^ $(LINKFLAGS)
@@ -29,8 +38,7 @@ $(BINDIR)/fastacompress_multithread: $(OBJ) $(ODIR)/main_multithread.o
 $(ODIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(GPP) -c -o $@ $< $(CPPFLAGS)
 
-all: $(BINDIR)/fastacompress $(BINDIR)/fastacompress_multithread
-
 clean:
 	rm -f $(ODIR)/*
 	rm -f $(BINDIR)/*
+	rm -f $(LIBDIR)/*
