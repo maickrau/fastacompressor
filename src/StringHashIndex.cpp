@@ -10,9 +10,9 @@ namespace FastaCompressor
 			if (str.size() <= 15)
 			{
 				assert(encodedString < (size_t)std::numeric_limits<uint32_t>::max());
-				if (len16Strings.count(encodedString) == 1) return 1;
+				return len16Strings.count(encodedString);
 			}
-			if (len32Strings.count(encodedString) == 1) return 1;
+			return len32Strings.count(encodedString);
 		}
 		auto fixstr = encodeStringToString(str);
 		if (biglenStrings.count(fixstr) == 1) return 1;
