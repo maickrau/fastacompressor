@@ -4,15 +4,22 @@ namespace FastaCompressor
 {
 	bool StringHashIndex::count(const std::string& str) const
 	{
+		if (str.size() <= 15)
+		{
+			__uint128_t encodedString = encodeString(str);
+			assert(encodedString < (__uint128_t)std::numeric_limits<uint32_t>::max());
+			return len16Strings.count(encodedString);
+		}
 		if (str.size() <= 31)
 		{
-			uint64_t encodedString = encodeString(str);
-			if (str.size() <= 15)
-			{
-				assert(encodedString < (size_t)std::numeric_limits<uint32_t>::max());
-				return len16Strings.count(encodedString);
-			}
+			__uint128_t encodedString = encodeString(str);
+			assert(encodedString < (__uint128_t)std::numeric_limits<uint64_t>::max());
 			return len32Strings.count(encodedString);
+		}
+		if (str.size() <= 63)
+		{
+			__uint128_t encodedString = encodeString(str);
+			return len64Strings.count(encodedString);
 		}
 		auto fixstr = encodeStringToString(str);
 		if (biglenStrings.count(fixstr) == 1) return 1;
@@ -20,33 +27,49 @@ namespace FastaCompressor
 	}
 	size_t StringHashIndex::at(const std::string& str) const
 	{
+		if (str.size() <= 15)
+		{
+			__uint128_t encodedString = encodeString(str);
+			assert(encodedString < (__uint128_t)std::numeric_limits<uint32_t>::max());
+			return len16Strings.at(encodedString);
+		}
 		if (str.size() <= 31)
 		{
-			uint64_t encodedString = encodeString(str);
-			if (str.size() <= 15)
-			{
-				assert(encodedString < (size_t)std::numeric_limits<uint32_t>::max());
-				if (len16Strings.count(encodedString) == 1) return len16Strings.at(encodedString);
-			}
-			if (len32Strings.count(encodedString) == 1) return len32Strings.at(encodedString);
+			__uint128_t encodedString = encodeString(str);
+			assert(encodedString < (__uint128_t)std::numeric_limits<uint64_t>::max());
+			return len32Strings.at(encodedString);
+		}
+		if (str.size() <= 63)
+		{
+			__uint128_t encodedString = encodeString(str);
+			return len64Strings.at(encodedString);
 		}
 		auto fixstr = encodeStringToString(str);
 		return biglenStrings.at(fixstr);
 	}
 	size_t StringHashIndex::getIndexOrSet(const std::string& str, const size_t value)
 	{
+		if (str.size() <= 15)
+		{
+			__uint128_t encodedString = encodeString(str);
+			assert(encodedString < (__uint128_t)std::numeric_limits<uint32_t>::max());
+			if (len16Strings.count(encodedString) == 1) return len16Strings.at(encodedString);
+			len16Strings[encodedString] = value;
+			return value;
+		}
 		if (str.size() <= 31)
 		{
-			uint64_t encodedString = encodeString(str);
-			if (str.size() <= 15)
-			{
-				assert(encodedString < (size_t)std::numeric_limits<uint32_t>::max());
-				if (len16Strings.count(encodedString) == 1) return len16Strings.at(encodedString);
-				len16Strings[encodedString] = value;
-				return value;
-			}
+			__uint128_t encodedString = encodeString(str);
+			assert(encodedString < (__uint128_t)std::numeric_limits<uint64_t>::max());
 			if (len32Strings.count(encodedString) == 1) return len32Strings.at(encodedString);
 			len32Strings[encodedString] = value;
+			return value;
+		}
+		if (str.size() <= 63)
+		{
+			__uint128_t encodedString = encodeString(str);
+			if (len64Strings.count(encodedString) == 1) return len64Strings.at(encodedString);
+			len64Strings[encodedString] = value;
 			return value;
 		}
 		auto fixstr = encodeStringToString(str);
@@ -57,19 +80,27 @@ namespace FastaCompressor
 	}
 	void StringHashIndex::setIndex(const std::string& str, const size_t value)
 	{
-		if (value < (size_t)std::numeric_limits<uint32_t>::max() && str.size() <= 15)
+		if (str.size() <= 15)
 		{
-			uint64_t encodedString = encodeString(str);
-			assert(encodedString < (size_t)std::numeric_limits<uint32_t>::max());
+			__uint128_t encodedString = encodeString(str);
+			assert(encodedString < (__uint128_t)std::numeric_limits<uint32_t>::max());
 			assert(len16Strings.count(encodedString) == 0);
 			len16Strings[encodedString] = value;
 			return;
 		}
 		if (str.size() <= 31)
 		{
-			uint64_t encodedString = encodeString(str);
+			__uint128_t encodedString = encodeString(str);
+			assert(encodedString < (__uint128_t)std::numeric_limits<uint64_t>::max());
 			assert(len32Strings.count(encodedString) == 0);
 			len32Strings[encodedString] = value;
+			return;
+		}
+		if (str.size() <= 63)
+		{
+			__uint128_t encodedString = encodeString(str);
+			assert(len64Strings.count(encodedString) == 0);
+			len64Strings[encodedString] = value;
 			return;
 		}
 		auto fixstr = encodeStringToString(str);
@@ -78,11 +109,11 @@ namespace FastaCompressor
 	}
 	size_t StringHashIndex::size() const
 	{
-		return len16Strings.size() + len32Strings.size() + biglenStrings.size();
+		return len16Strings.size() + len32Strings.size() + len64Strings.size() + biglenStrings.size();
 	}
-	uint64_t StringHashIndex::encodeString(const std::string& str) const
+	__uint128_t StringHashIndex::encodeString(const std::string& str) const
 	{
-		uint64_t result = 1;
+		__uint128_t result = 1;
 		for (size_t i = str.size()-1; i < str.size(); i--)
 		{
 			result <<= 2;
@@ -156,7 +187,7 @@ namespace FastaCompressor
 		std::reverse(result.end() - pickedInLast, result.end());
 		return result;
 	}
-	std::string StringHashIndex::decodeString(uint64_t val) const
+	std::string StringHashIndex::decodeString(__uint128_t val) const
 	{
 		std::string result;
 		while (val != 1)
