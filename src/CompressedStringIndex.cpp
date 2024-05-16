@@ -11,20 +11,54 @@ namespace FastaCompressor
 	}
 	size_t CompressedStringIndex::addString(const std::string& readName, const std::string& readSequence)
 	{
-		size_t result = readNames.size();
-		readNames.emplace_back(readName);
+		size_t result;
+		{
+			std::lock_guard lock { indexMutex };
+			result = readNames.size();
+			readNames.emplace_back();
+			readIndices.emplace_back();
+		}
+		readNames[result] = readName;
 		std::vector<size_t> indices = index.addString(readSequence);
 		size_t maxIndex = 0;
 		for (size_t val : indices)
 		{
 			maxIndex = std::max(maxIndex, val);
 		}
-		readIndices.emplace_back();
-		readIndices.back().setWidth(ceil(log2(maxIndex+1)));
-		readIndices.back().resize(indices.size());
+		readIndices[result].setWidth(ceil(log2(maxIndex+1)));
+		readIndices[result].resize(indices.size());
 		for (size_t i = 0; i < indices.size(); i++)
 		{
-			readIndices.back().set(i, indices[i]);
+			readIndices[result].set(i, indices[i]);
+		}
+		return result;
+	}
+	size_t CompressedStringIndex::addString(const size_t readID, const std::string& readName, const std::string& readSequence)
+	{
+		size_t result;
+		{
+			std::lock_guard lock { indexMutex };
+			while (readID >= readNames.size())
+			{
+				readNames.emplace_back();
+				readIndices.emplace_back();
+			}
+			assert(readNames[readID].size() == 0);
+			assert(readIndices[readID].size() == 0);
+		}
+		result = readID;
+		readNames[result] = readName;
+		std::vector<size_t> indices = index.addString(readSequence);
+		size_t maxIndex = 0;
+		for (size_t val : indices)
+		{
+			maxIndex = std::max(maxIndex, val);
+		}
+		readIndices[result].setWidth(ceil(log2(maxIndex+1)));
+		readIndices[result].resize(indices.size());
+		for (size_t i = 0; i < indices.size(); i++)
+		{
+			readIndices[result].set(i, indices[i]);
 		}
 		return result;
 	}

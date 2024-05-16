@@ -1,6 +1,7 @@
 #ifndef CompressedIndex_h
 #define CompressedIndex_h
 
+#include <mutex>
 #include <vector>
 #include <string>
 #include <phmap.h>
@@ -38,6 +39,7 @@ namespace FastaCompressor
 		size_t bitsPerIndex;
 		size_t k;
 		size_t w;
+		std::mutex addStringMutex;
 	};
 }
 

@@ -23,10 +23,13 @@ $(shell mkdir -p obj)
 $(BINDIR)/fastacompress: $(OBJ) $(ODIR)/main.o
 	$(GPP) -o $@ $^ $(LINKFLAGS)
 
+$(BINDIR)/fastacompress_multithread: $(OBJ) $(ODIR)/main_multithread.o
+	$(GPP) -o $@ $^ $(LINKFLAGS)
+
 $(ODIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
 	$(GPP) -c -o $@ $< $(CPPFLAGS)
 
-all: $(BINDIR)/fastacompress
+all: $(BINDIR)/fastacompress $(BINDIR)/fastacompress_multithread
 
 clean:
 	rm -f $(ODIR)/*

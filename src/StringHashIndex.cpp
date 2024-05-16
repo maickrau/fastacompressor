@@ -33,6 +33,28 @@ namespace FastaCompressor
 		auto fixstr = encodeStringToString(str);
 		return biglenStrings.at(fixstr);
 	}
+	size_t StringHashIndex::getIndexOrSet(const std::string& str, const size_t value)
+	{
+		if (str.size() <= 31)
+		{
+			uint64_t encodedString = encodeString(str);
+			if (str.size() <= 15)
+			{
+				assert(encodedString < (size_t)std::numeric_limits<uint32_t>::max());
+				if (len16Strings.count(encodedString) == 1) return len16Strings.at(encodedString);
+				len16Strings[encodedString] = value;
+				return value;
+			}
+			if (len32Strings.count(encodedString) == 1) return len32Strings.at(encodedString);
+			len32Strings[encodedString] = value;
+			return value;
+		}
+		auto fixstr = encodeStringToString(str);
+		auto found = biglenStrings.find(fixstr);
+		if (found != biglenStrings.end()) return found->second;
+		biglenStrings[fixstr] = value;
+		return value;
+	}
 	void StringHashIndex::setIndex(const std::string& str, const size_t value)
 	{
 		if (value < (size_t)std::numeric_limits<uint32_t>::max() && str.size() <= 15)

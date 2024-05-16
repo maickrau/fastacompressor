@@ -37,30 +37,32 @@ namespace FastaCompressor
 			minimizerPositions.emplace_back(seq.size());
 		}
 		std::vector<size_t> result;
-		for (size_t i = 1; i < minimizerPositions.size(); i++)
+		result.reserve(minimizerPositions.size()-1);
 		{
-			size_t start = minimizerPositions[i-1];
-			size_t end = minimizerPositions[i];
-			std::string kmer = seq.substr(start, end-start);
-			size_t index = 0;
-			if (pieceIndex.count(kmer) == 0)
+			std::lock_guard lock { addStringMutex };
+			for (size_t i = 1; i < minimizerPositions.size(); i++)
 			{
-				index = pieceIndex.size() + hierarchyIndex.size();
-				pieceIndex.setIndex(kmer, index);
-				assert(seenOnce.size() == index);
-				seenOnce.emplace_back(false);
+				size_t start = minimizerPositions[i-1];
+				size_t end = minimizerPositions[i];
+				std::string kmer = seq.substr(start, end-start);
+				size_t index = 0;
+				size_t addedIndex = pieceIndex.size() + hierarchyIndex.size();
+				index = pieceIndex.getIndexOrSet(kmer, addedIndex);
+				if (index == addedIndex)
+				{
+					assert(seenOnce.size() == index);
+					seenOnce.emplace_back(false);
+				}
+				result.emplace_back(index);
 			}
-			else
-			{
-				index = pieceIndex.at(kmer);
-			}
-			result.emplace_back(index);
 		}
+		assert(result.size() == minimizerPositions.size()-1);
 		return result;
 	}
 	std::vector<size_t> CompressedIndex::addString(const std::string& str)
 	{
 		auto indices = segmentFastaToPieces(str);
+		std::lock_guard lock { addStringMutex };
 		auto fixedIndices = hierarchizeIndices(indices);
 		std::vector<size_t> result;
 		for (size_t i = 0; i+1 < fixedIndices.size(); i += 2)
