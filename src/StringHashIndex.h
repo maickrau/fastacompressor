@@ -5,17 +5,6 @@
 #include <string>
 #include <phmap.h>
 
-namespace std
-{
-	template <> struct hash<__uint128_t>
-	{
-		size_t operator()(__uint128_t x) const
-		{
-			return std::hash<uint64_t>{}((uint64_t)x ^ (uint64_t)(x >> 64));
-		}
-	};
-}
-
 namespace FastaCompressor
 {
 	class StringHashIndex

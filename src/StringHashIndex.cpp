@@ -1,5 +1,16 @@
 #include "StringHashIndex.h"
 
+namespace std
+{
+	template <> struct hash<__uint128_t>
+	{
+		size_t operator()(__uint128_t x) const
+		{
+			return std::hash<uint64_t>{}((uint64_t)x ^ (uint64_t)(x >> 64));
+		}
+	};
+}
+
 namespace FastaCompressor
 {
 	bool StringHashIndex::count(const std::string& str) const
