@@ -36,18 +36,47 @@ namespace FastaCompressor
 			if (minimizerPositions[0] != 0) minimizerPositions.insert(minimizerPositions.begin(), 0);
 			minimizerPositions.emplace_back(seq.size());
 		}
+		std::vector<__uint128_t> shortPieces;
+		std::vector<std::string> longPieces;
+		std::vector<uint8_t> pieceType;
+		shortPieces.resize(minimizerPositions.size()-1);
+		longPieces.resize(minimizerPositions.size()-1);
+		pieceType.resize(minimizerPositions.size()-1, std::numeric_limits<uint8_t>::max());
+		for (size_t i = 1; i < minimizerPositions.size(); i++)
+		{
+			size_t start = minimizerPositions[i-1];
+			size_t end = minimizerPositions[i];
+			std::string kmer = seq.substr(start, end-start);
+			if (kmer.size() <= 15)
+			{
+				pieceType[i-1] = 0;
+				shortPieces[i-1] = pieceIndex.encodeString(kmer);
+			}
+			else if (kmer.size() <= 31)
+			{
+				pieceType[i-1] = 1;
+				shortPieces[i-1] = pieceIndex.encodeString(kmer);
+			}
+			else if (kmer.size() <= 63)
+			{
+				pieceType[i-1] = 2;
+				shortPieces[i-1] = pieceIndex.encodeString(kmer);
+			}
+			else
+			{
+				pieceType[i-1] = 3;
+				longPieces[i-1] = pieceIndex.encodeStringToString(kmer);
+			}
+		}
 		std::vector<size_t> result;
 		result.reserve(minimizerPositions.size()-1);
 		{
 			std::lock_guard lock { addStringMutex };
-			for (size_t i = 1; i < minimizerPositions.size(); i++)
+			for (size_t i = 0; i < shortPieces.size(); i++)
 			{
-				size_t start = minimizerPositions[i-1];
-				size_t end = minimizerPositions[i];
-				std::string kmer = seq.substr(start, end-start);
 				size_t index = 0;
 				size_t addedIndex = pieceIndex.size() + hierarchyIndex.size();
-				index = pieceIndex.getIndexOrSet(kmer, addedIndex);
+				index = pieceIndex.getIndexOrSet(shortPieces[i], longPieces[i], pieceType[i], addedIndex);
 				if (index == addedIndex)
 				{
 					assert(seenOnce.size() == index);
