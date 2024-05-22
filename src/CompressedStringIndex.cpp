@@ -17,19 +17,22 @@ namespace FastaCompressor
 			result = readNames.size();
 			readNames.emplace_back();
 			readIndices.emplace_back();
+			readNames[result] = readName;
 		}
-		readNames[result] = readName;
 		std::vector<size_t> indices = index.addString(readSequence);
 		size_t maxIndex = 0;
 		for (size_t val : indices)
 		{
 			maxIndex = std::max(maxIndex, val);
 		}
-		readIndices[result].setWidth(ceil(log2(maxIndex+1)));
-		readIndices[result].resize(indices.size());
-		for (size_t i = 0; i < indices.size(); i++)
 		{
-			readIndices[result].set(i, indices[i]);
+			std::lock_guard lock { indexMutex };
+			readIndices[result].setWidth(ceil(log2(maxIndex+1)));
+			readIndices[result].resize(indices.size());
+			for (size_t i = 0; i < indices.size(); i++)
+			{
+				readIndices[result].set(i, indices[i]);
+			}
 		}
 		return result;
 	}
