@@ -39,6 +39,7 @@ namespace FastaCompressor
 	size_t CompressedStringIndex::addString(const size_t readID, const std::string& readName, const std::string& readSequence)
 	{
 		size_t result;
+		result = readID;
 		{
 			std::lock_guard lock { indexMutex };
 			while (readID >= readNames.size())
@@ -48,20 +49,22 @@ namespace FastaCompressor
 			}
 			assert(readNames[readID].size() == 0);
 			assert(readIndices[readID].size() == 0);
+			readNames[result] = readName;
 		}
-		result = readID;
-		readNames[result] = readName;
 		std::vector<size_t> indices = index.addString(readSequence);
 		size_t maxIndex = 0;
 		for (size_t val : indices)
 		{
 			maxIndex = std::max(maxIndex, val);
 		}
-		readIndices[result].setWidth(ceil(log2(maxIndex+1)));
-		readIndices[result].resize(indices.size());
-		for (size_t i = 0; i < indices.size(); i++)
 		{
-			readIndices[result].set(i, indices[i]);
+			std::lock_guard lock { indexMutex };
+			readIndices[result].setWidth(ceil(log2(maxIndex+1)));
+			readIndices[result].resize(indices.size());
+			for (size_t i = 0; i < indices.size(); i++)
+			{
+				readIndices[result].set(i, indices[i]);
+			}
 		}
 		return result;
 	}
