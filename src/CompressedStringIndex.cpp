@@ -25,14 +25,16 @@ namespace FastaCompressor
 		{
 			maxIndex = std::max(maxIndex, val);
 		}
+		VariableWidthIntVector tmp;
+		tmp.setWidth(ceil(log2(maxIndex+1)));
+		tmp.resize(indices.size());
+		for (size_t i = 0; i < indices.size(); i++)
+		{
+			tmp.set(i, indices[i]);
+		}
 		{
 			std::lock_guard lock { indexMutex };
-			readIndices[result].setWidth(ceil(log2(maxIndex+1)));
-			readIndices[result].resize(indices.size());
-			for (size_t i = 0; i < indices.size(); i++)
-			{
-				readIndices[result].set(i, indices[i]);
-			}
+			std::swap(tmp, readIndices[result]);
 		}
 		return result;
 	}
