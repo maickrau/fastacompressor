@@ -4,6 +4,7 @@
 #include <mutex>
 #include <vector>
 #include <string>
+#include <condition_variable>
 #include <phmap.h>
 #include "VariableWidthIntVector.h"
 #include "StringContainer.h"
@@ -30,7 +31,6 @@ namespace FastaCompressor
 		bool frozen() const;
 	private:
 		std::vector<size_t> segmentFastaToPieces(const std::string& sequence);
-		std::vector<bool> seenOnce;
 		HierarchyIndex hierarchyIndex;
 		StringHashIndex pieceIndex;
 		VariableWidthIntVector hierarchyTopDownFirst;
@@ -41,7 +41,10 @@ namespace FastaCompressor
 		size_t bitsPerIndex;
 		size_t k;
 		size_t w;
-		std::mutex addStringMutex;
+		std::mutex pieceMutex;
+		std::mutex hierarchyMutex;
+		std::atomic<size_t> hierarchyReaderCount;
+		std::condition_variable hierarchyConditionVariable;
 	};
 }
 

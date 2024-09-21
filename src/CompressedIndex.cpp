@@ -1,4 +1,5 @@
 #include <iostream>
+#include <chrono>
 #include "CompressedIndex.h"
 #include "MinimizerIterator.h"
 #include "RankBitvector.h"
@@ -6,7 +7,6 @@
 namespace FastaCompressor
 {
 	CompressedIndex::CompressedIndex(size_t k, size_t w) :
-		seenOnce(),
 		hierarchyIndex(),
 		pieceIndex(),
 		hierarchyTopDownFirst(),
@@ -18,6 +18,7 @@ namespace FastaCompressor
 		k(k),
 		w(w)
 	{
+		hierarchyReaderCount = 0;
 	}
 	std::vector<size_t> CompressedIndex::segmentFastaToPieces(const std::string& seq)
 	{
@@ -71,17 +72,12 @@ namespace FastaCompressor
 		std::vector<size_t> result;
 		result.reserve(minimizerPositions.size()-1);
 		{
-			std::lock_guard lock { addStringMutex };
+			std::lock_guard lock { pieceMutex };
 			for (size_t i = 0; i < shortPieces.size(); i++)
 			{
 				size_t index = 0;
-				size_t addedIndex = pieceIndex.size() + hierarchyIndex.size();
+				size_t addedIndex = pieceIndex.size()*2;
 				index = pieceIndex.getIndexOrSet(shortPieces[i], longPieces[i], pieceType[i], addedIndex);
-				if (index == addedIndex)
-				{
-					assert(seenOnce.size() == index);
-					seenOnce.emplace_back(false);
-				}
 				result.emplace_back(index);
 			}
 		}
@@ -91,32 +87,41 @@ namespace FastaCompressor
 	std::vector<size_t> CompressedIndex::addString(const std::string& str)
 	{
 		auto indices = segmentFastaToPieces(str);
-		std::lock_guard lock { addStringMutex };
-		auto fixedIndices = hierarchizeIndices(indices);
-		std::vector<size_t> result;
-		for (size_t i = 0; i+1 < fixedIndices.size(); i += 2)
 		{
-			if (i > 0 && hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 1)
+			std::lock_guard<std::mutex> lock { hierarchyMutex };
+			hierarchyReaderCount += 1;
+		}
+		auto fixedIndices = hierarchizeIndices(indices);
+		hierarchyReaderCount -= 1;
+		if (hierarchyReaderCount == 0)
+		{
+			hierarchyConditionVariable.notify_one();
+		}
+		std::vector<size_t> result;
+		result.reserve(fixedIndices.size());
+		{
+			std::unique_lock<std::mutex> lock { hierarchyMutex };
+			while (hierarchyReaderCount > 0)
 			{
-				result.emplace_back(hierarchyIndex.at(std::make_pair(fixedIndices[i], fixedIndices[i+1])));
+				hierarchyConditionVariable.wait_for(lock, std::chrono::milliseconds(1));
 			}
-			else if (seenOnce[fixedIndices[i]] && seenOnce[fixedIndices[i+1]])
+			assert(hierarchyReaderCount == 0);
+			for (size_t i = 0; i+1 < fixedIndices.size(); i += 2)
 			{
-				assert(hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 0);
-				size_t index = hierarchyIndex.size() + pieceIndex.size();
-				hierarchyIndex.set(std::make_pair(fixedIndices[i], fixedIndices[i+1]), index);
-				assert(seenOnce.size() == index);
-				seenOnce.emplace_back(false);
-				result.emplace_back(index);
-			}
-			else
-			{
-				seenOnce[fixedIndices[i]] = true;
-				seenOnce[fixedIndices[i+1]] = true;
-				result.emplace_back(fixedIndices[i]);
-				result.emplace_back(fixedIndices[i+1]);
+				if (hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 1)
+				{
+					result.emplace_back(hierarchyIndex.at(std::make_pair(fixedIndices[i], fixedIndices[i+1])));
+				}
+				else
+				{
+					assert(hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 0);
+					size_t index = hierarchyIndex.size()*2+1;
+					hierarchyIndex.set(std::make_pair(fixedIndices[i], fixedIndices[i+1]), index);
+					result.emplace_back(index);
+				}
 			}
 		}
+		hierarchyConditionVariable.notify_one();
 		if (fixedIndices.size() % 2 == 1) result.emplace_back(fixedIndices.back());
 		return result;
 	}
@@ -151,7 +156,7 @@ namespace FastaCompressor
 			while (result.size() >= 2 && hierarchyIndex.count(std::make_pair(result[result.size()-2], result[result.size()-1])) == 1)
 			{
 				size_t replacement = hierarchyIndex.at(std::make_pair(result[result.size()-2], result[result.size()-1]));
-				assert(replacement < hierarchyIndex.size() + pieceIndex.size());
+				// assert(replacement < hierarchyIndex.size() + pieceIndex.size()); // true but can't check because no lock on pieceIndex
 				result.pop_back();
 				result.pop_back();
 				result.emplace_back(replacement);
@@ -277,13 +282,6 @@ namespace FastaCompressor
 	void CompressedIndex::removeConstructionVariables(std::vector<VariableWidthIntVector>& indices)
 	{
 		assert(!isfrozen);
-		RankBitvector indexIsPiece;
-		indexIsPiece.resize(pieceIndex.size() + hierarchyIndex.size());
-		pieceIndex.iterateValues([&indexIsPiece](size_t value)
-		{
-			indexIsPiece.set(value, true);
-		});
-		indexIsPiece.buildRanks();
 		bitsPerIndex = ceil(log2(pieceIndex.size() + hierarchyIndex.size()));
 		firstHierarchicalIndex = pieceIndex.size();
 		for (size_t i = 0; i < indices.size(); i++)
@@ -299,47 +297,43 @@ namespace FastaCompressor
 			replacement.resize(tmp.size());
 			for (size_t j = 0; j < tmp.size(); j++)
 			{
-				if (indexIsPiece.get(tmp[j]))
+				if (tmp[j] % 2 == 0)
 				{
-					replacement.set(j, indexIsPiece.getRank(tmp[j]));
+					replacement.set(j, tmp[j]/2);
 				}
 				else
 				{
-					replacement.set(j, tmp[j] - indexIsPiece.getRank(tmp[j]) + firstHierarchicalIndex);
+					replacement.set(j, (tmp[j]-1) / 2 + firstHierarchicalIndex);
 				}
 			}
 			std::swap(replacement, indices[i]);
 		}
 		assert(bitsPerIndex > 0);
-		{
-			decltype(seenOnce) tmp;
-			std::swap(tmp, seenOnce);
-		}
 		hierarchyTopDownFirst.setWidth(bitsPerIndex);
 		hierarchyTopDownSecond.setWidth(bitsPerIndex);
 		hierarchyTopDownFirst.resize(hierarchyIndex.size());
 		hierarchyTopDownSecond.resize(hierarchyIndex.size());
-		hierarchyIndex.iterateKeyValues([this, &indexIsPiece](std::pair<uint64_t, uint64_t> key, size_t value)
+		hierarchyIndex.iterateKeyValues([this](std::pair<uint64_t, uint64_t> key, size_t value)
 		{
-			size_t index = value - indexIsPiece.getRank(value);
+			size_t index = (value-1) / 2;
 			assert(index < hierarchyTopDownFirst.size());
 			assert(hierarchyTopDownFirst.get(index) == 0);
 			assert(hierarchyTopDownSecond.get(index) == 0);
-			if (indexIsPiece.get(key.first))
+			if (key.first % 2 == 0)
 			{
-				hierarchyTopDownFirst.set(index, indexIsPiece.getRank(key.first));
+				hierarchyTopDownFirst.set(index, key.first / 2);
 			}
 			else
 			{
-				hierarchyTopDownFirst.set(index, key.first - indexIsPiece.getRank(key.first) + firstHierarchicalIndex);
+				hierarchyTopDownFirst.set(index, (key.first-1) / 2 + firstHierarchicalIndex);
 			}
-			if (indexIsPiece.get(key.second))
+			if (key.second % 2 == 0)
 			{
-				hierarchyTopDownSecond.set(index, indexIsPiece.getRank(key.second));
+				hierarchyTopDownSecond.set(index, key.second / 2);
 			}
 			else
 			{
-				hierarchyTopDownSecond.set(index, key.second - indexIsPiece.getRank(key.second) + firstHierarchicalIndex);
+				hierarchyTopDownSecond.set(index, (key.second-1) / 2 + firstHierarchicalIndex);
 			}
 		});
 		{
@@ -353,13 +347,13 @@ namespace FastaCompressor
 		});
 		pieces.setMaxStringLength(k+w);
 		VariableWidthIntVector pieceReordering;
-		pieceReordering.setWidth(ceil(log2(pieceIndex.size()+1)));
+		pieceReordering.setWidth(ceil(log2(pieceIndex.size()*2+1)));
 		pieceReordering.resize(pieceIndex.size());
 		pieces.reserve(pieceIndex.size(), countBases);
 		{
-			pieceIndex.iterateKeyValues([&indexIsPiece, &pieceReordering, this](const std::string key, const size_t value)
+			pieceIndex.iterateKeyValues([&pieceReordering, this](const std::string key, const size_t value)
 			{
-				size_t index = indexIsPiece.getRank(value);
+				size_t index = value / 2;
 				assert(pieceReordering.get(index) == 0);
 				pieceReordering.set(index, pieces.size());
 				pieces.push_back(key);
