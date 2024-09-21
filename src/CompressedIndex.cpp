@@ -99,6 +99,8 @@ namespace FastaCompressor
 		}
 		std::vector<size_t> result;
 		result.reserve(fixedIndices.size());
+		assert(fixedIndices.size() >= 1);
+		if (fixedIndices.size() >= 2)
 		{
 			std::unique_lock<std::mutex> lock { hierarchyMutex };
 			while (hierarchyReaderCount > 0)
