@@ -18,6 +18,7 @@ namespace FastaCompressor
 		k(k),
 		w(w)
 	{
+		pieceReaderCount = 0;
 		hierarchyReaderCount = 0;
 	}
 	std::vector<size_t> CompressedIndex::segmentFastaToPieces(const std::string& seq)
@@ -71,15 +72,45 @@ namespace FastaCompressor
 		}
 		std::vector<size_t> result;
 		result.reserve(minimizerPositions.size()-1);
+		std::vector<size_t> indicesNeedWriting;
 		{
 			std::lock_guard lock { pieceMutex };
-			for (size_t i = 0; i < shortPieces.size(); i++)
+			pieceReaderCount += 1;
+		}
+		for (size_t i = 0; i < shortPieces.size(); i++)
+		{
+			size_t index = 0;
+			index = pieceIndex.getIndexOrNull(shortPieces[i], longPieces[i], pieceType[i]);
+			result.emplace_back(index);
+			if (index == std::numeric_limits<size_t>::max())
 			{
-				size_t index = 0;
-				size_t addedIndex = pieceIndex.size()*2;
-				index = pieceIndex.getIndexOrSet(shortPieces[i], longPieces[i], pieceType[i], addedIndex);
-				result.emplace_back(index);
+				indicesNeedWriting.emplace_back(i);
 			}
+		}
+		pieceReaderCount -= 1;
+		if (pieceReaderCount == 0)
+		{
+			pieceConditionVariable.notify_one();
+		}
+		if (indicesNeedWriting.size() >= 1)
+		{
+			{
+				std::unique_lock<std::mutex> lock { pieceMutex };
+				while (pieceReaderCount > 0)
+				{
+					pieceConditionVariable.wait_for(lock, std::chrono::milliseconds(1));
+				}
+				assert(pieceReaderCount == 0);
+				for (size_t ii = 0; ii < indicesNeedWriting.size(); ii++)
+				{
+					size_t i = indicesNeedWriting[ii];
+					size_t index = 0;
+					size_t addedIndex = pieceIndex.size()*2;
+					index = pieceIndex.getIndexOrSet(shortPieces[i], longPieces[i], pieceType[i], addedIndex);
+					result[i] = index;
+				}
+			}
+			hierarchyConditionVariable.notify_one();
 		}
 		assert(result.size() == minimizerPositions.size()-1);
 		return result;

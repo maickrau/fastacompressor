@@ -42,6 +42,8 @@ namespace FastaCompressor
 		size_t k;
 		size_t w;
 		std::mutex pieceMutex;
+		std::atomic<size_t> pieceReaderCount;
+		std::condition_variable pieceConditionVariable;
 		std::mutex hierarchyMutex;
 		std::atomic<size_t> hierarchyReaderCount;
 		std::condition_variable hierarchyConditionVariable;

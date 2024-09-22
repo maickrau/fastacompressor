@@ -12,6 +12,7 @@ namespace FastaCompressor
 	public:
 		bool count(const std::string& str) const;
 		void setIndex(const std::string& str, const size_t value);
+		size_t getIndexOrNull(const __uint128_t shortPiece, const std::string& longPiece, const uint8_t pieceType) const;
 		size_t getIndexOrSet(const __uint128_t shortPiece, const std::string& longPiece, const uint8_t pieceType, const size_t value);
 		size_t getIndexOrSet(const std::string& str, const size_t value);
 		size_t at(const std::string& str) const;
