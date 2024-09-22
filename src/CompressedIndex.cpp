@@ -110,7 +110,7 @@ namespace FastaCompressor
 					result[i] = index;
 				}
 			}
-			hierarchyConditionVariable.notify_one();
+			pieceConditionVariable.notify_one();
 		}
 		assert(result.size() == minimizerPositions.size()-1);
 		return result;
