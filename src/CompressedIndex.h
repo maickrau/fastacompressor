@@ -27,7 +27,7 @@ namespace FastaCompressor
 		size_t maxIndex() const;
 		size_t pieceCount() const;
 		size_t baseCount() const;
-		void removeConstructionVariables(std::vector<VariableWidthIntVector>& indices);
+		void removeConstructionVariables(std::vector<VariableWidthIntVector>& indices, const size_t numThreads);
 		bool frozen() const;
 	private:
 		std::vector<size_t> segmentFastaToPieces(const std::string& sequence);

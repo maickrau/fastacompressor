@@ -1,5 +1,6 @@
 #include <iostream>
 #include <chrono>
+#include <thread>
 #include "CompressedIndex.h"
 #include "MinimizerIterator.h"
 #include "RankBitvector.h"
@@ -312,75 +313,15 @@ namespace FastaCompressor
 	{
 		return isfrozen;
 	}
-	void CompressedIndex::removeConstructionVariables(std::vector<VariableWidthIntVector>& indices)
+	void CompressedIndex::removeConstructionVariables(std::vector<VariableWidthIntVector>& indices, const size_t numThreads)
 	{
 		assert(!isfrozen);
 		bitsPerIndex = ceil(log2(pieceIndex.size() + hierarchyIndex.size()));
 		firstHierarchicalIndex = pieceIndex.size();
-		for (size_t i = 0; i < indices.size(); i++)
-		{
-			VariableWidthIntVector replacement;
-			replacement.setWidth(bitsPerIndex);
-			std::vector<size_t> tmp;
-			for (size_t j = 0; j < indices[i].size(); j++)
-			{
-				tmp.emplace_back(indices[i].get(j));
-			}
-			tmp = hierarchizeIndices(tmp);
-			replacement.resize(tmp.size());
-			for (size_t j = 0; j < tmp.size(); j++)
-			{
-				if (tmp[j] % 2 == 0)
-				{
-					replacement.set(j, tmp[j]/2);
-				}
-				else
-				{
-					replacement.set(j, (tmp[j]-1) / 2 + firstHierarchicalIndex);
-				}
-			}
-			std::swap(replacement, indices[i]);
-		}
-		assert(bitsPerIndex > 0);
-		hierarchyTopDownFirst.setWidth(bitsPerIndex);
-		hierarchyTopDownSecond.setWidth(bitsPerIndex);
-		hierarchyTopDownFirst.resize(hierarchyIndex.size());
-		hierarchyTopDownSecond.resize(hierarchyIndex.size());
-		hierarchyIndex.iterateKeyValues([this](std::pair<uint64_t, uint64_t> key, size_t value)
-		{
-			size_t index = (value-1) / 2;
-			assert(index < hierarchyTopDownFirst.size());
-			assert(hierarchyTopDownFirst.get(index) == 0);
-			assert(hierarchyTopDownSecond.get(index) == 0);
-			if (key.first % 2 == 0)
-			{
-				hierarchyTopDownFirst.set(index, key.first / 2);
-			}
-			else
-			{
-				hierarchyTopDownFirst.set(index, (key.first-1) / 2 + firstHierarchicalIndex);
-			}
-			if (key.second % 2 == 0)
-			{
-				hierarchyTopDownSecond.set(index, key.second / 2);
-			}
-			else
-			{
-				hierarchyTopDownSecond.set(index, (key.second-1) / 2 + firstHierarchicalIndex);
-			}
-		});
-		{
-			decltype(hierarchyIndex) tmp;
-			std::swap(tmp, hierarchyIndex);
-		}
-		size_t countBases = 0;
-		pieceIndex.iterateKeyValues([&countBases](const std::string key, const size_t value)
-		{
-			countBases += key.size();
-		});
+		size_t countBases = pieceIndex.countBases();
 		pieces.setMaxStringLength(k+w);
 		VariableWidthIntVector pieceReordering;
-		pieceReordering.setWidth(ceil(log2(pieceIndex.size()*2+1)));
+		pieceReordering.setWidth(ceil(log2(pieceIndex.size()+1)));
 		pieceReordering.resize(pieceIndex.size());
 		pieces.reserve(pieceIndex.size(), countBases);
 		{
@@ -392,44 +333,91 @@ namespace FastaCompressor
 				pieces.push_back(key);
 			});
 		}
-		std::vector<bool> valueFound;
-		valueFound.resize(pieceIndex.size(), false);
-		for (size_t i = 0; i < pieceReordering.size(); i++)
-		{
-			assert(!valueFound[pieceReordering.get(i)]);
-			assert(pieceReordering.get(i) < valueFound.size());
-			valueFound[pieceReordering.get(i)] = true;
-		}
 		assert(pieceReordering.size() == firstHierarchicalIndex);
-		for (size_t i = 0; i < indices.size(); i++)
-		{
-			for (size_t j = 0; j < indices[i].size(); j++)
-			{
-				if (indices[i].get(j) < pieceReordering.size())
-				{
-					size_t newValue = pieceReordering.get(indices[i].get(j));
-					indices[i].set(j, newValue);
-					assert(indices[i].get(j) == newValue);
-				}
-			}
-		}
-		for (size_t i = 0; i < hierarchyTopDownFirst.size(); i++)
-		{
-			if (hierarchyTopDownFirst.get(i) < pieceReordering.size())
-			{
-				hierarchyTopDownFirst.set(i, pieceReordering.get(hierarchyTopDownFirst.get(i)));
-			}
-		}
-		for (size_t i = 0; i < hierarchyTopDownSecond.size(); i++)
-		{
-			if (hierarchyTopDownSecond.get(i) < pieceReordering.size())
-			{
-				hierarchyTopDownSecond.set(i, pieceReordering.get(hierarchyTopDownSecond.get(i)));
-			}
-		}
 		{
 			decltype(pieceIndex) tmp;
 			std::swap(tmp, pieceIndex);
+		}
+		std::vector<std::thread> threads;
+		std::atomic<size_t> indexIndex;
+		indexIndex = 0;
+		std::mutex indexMutex;
+		for (size_t threadi = 0; threadi < std::max((size_t)1, (size_t)numThreads-1); threadi++)
+		{
+			threads.emplace_back([this, &indexIndex, &indexMutex, &indices, &pieceReordering]()
+			{
+				while (true)
+				{
+					size_t i = indices.size();
+					{
+						std::lock_guard<std::mutex> lock { indexMutex };
+						i = indexIndex;
+						indexIndex += 1;
+					}
+					if (i >= indices.size()) break;
+					VariableWidthIntVector replacement;
+					replacement.setWidth(bitsPerIndex);
+					std::vector<size_t> tmp;
+					for (size_t j = 0; j < indices[i].size(); j++)
+					{
+						tmp.emplace_back(indices[i].get(j));
+					}
+					tmp = hierarchizeIndices(tmp);
+					replacement.resize(tmp.size());
+					for (size_t j = 0; j < tmp.size(); j++)
+					{
+						if (tmp[j] % 2 == 0)
+						{
+							replacement.set(j, pieceReordering.get(tmp[j]/2));
+						}
+						else
+						{
+							replacement.set(j, (tmp[j]-1) / 2 + firstHierarchicalIndex);
+						}
+					}
+					std::swap(replacement, indices[i]);
+				}
+			});
+		}
+		if (numThreads == 1) threads[0].join();
+		assert(bitsPerIndex > 0);
+		hierarchyTopDownFirst.setWidth(bitsPerIndex);
+		hierarchyTopDownSecond.setWidth(bitsPerIndex);
+		hierarchyTopDownFirst.resize(hierarchyIndex.size());
+		hierarchyTopDownSecond.resize(hierarchyIndex.size());
+		hierarchyIndex.iterateKeyValues([this, &pieceReordering](std::pair<uint64_t, uint64_t> key, size_t value)
+		{
+			size_t index = (value-1) / 2;
+			assert(index < hierarchyTopDownFirst.size());
+			assert(hierarchyTopDownFirst.get(index) == 0);
+			assert(hierarchyTopDownSecond.get(index) == 0);
+			if (key.first % 2 == 0)
+			{
+				hierarchyTopDownFirst.set(index, pieceReordering.get(key.first / 2));
+			}
+			else
+			{
+				hierarchyTopDownFirst.set(index, (key.first-1) / 2 + firstHierarchicalIndex);
+			}
+			if (key.second % 2 == 0)
+			{
+				hierarchyTopDownSecond.set(index, pieceReordering.get(key.second / 2));
+			}
+			else
+			{
+				hierarchyTopDownSecond.set(index, (key.second-1) / 2 + firstHierarchicalIndex);
+			}
+		});
+		if (numThreads > 1)
+		{
+			for (size_t threadi = 0; threadi < threads.size(); threadi++)
+			{
+				threads[threadi].join();
+			}
+		}
+		{
+			decltype(hierarchyIndex) tmp;
+			std::swap(tmp, hierarchyIndex);
 		}
 		isfrozen = true;
 	}

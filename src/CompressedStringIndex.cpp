@@ -87,9 +87,9 @@ namespace FastaCompressor
 		assert(index.frozen());
 		return index.getString(readIndices[i]);
 	}
-	void CompressedStringIndex::removeConstructionVariables()
+	void CompressedStringIndex::removeConstructionVariables(const size_t numThreads)
 	{
-		index.removeConstructionVariables(readIndices);
+		index.removeConstructionVariables(readIndices, numThreads);
 	}
 	size_t CompressedStringIndex::size() const
 	{

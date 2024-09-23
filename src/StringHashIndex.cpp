@@ -13,6 +13,27 @@ namespace std
 
 namespace FastaCompressor
 {
+	size_t StringHashIndex::countBases() const
+	{
+		size_t result = 0;
+		for (auto pair : len16Strings)
+		{
+			result += decodeStringLength(pair.first);
+		}
+		for (auto pair : len32Strings)
+		{
+			result += decodeStringLength(pair.first);
+		}
+		for (auto pair : len64Strings)
+		{
+			result += decodeStringLength(pair.first);
+		}
+		for (const auto& pair : biglenStrings)
+		{
+			result += decodeStringToStringLength(pair.first);
+		}
+		return result;
+	}
 	bool StringHashIndex::count(const std::string& str) const
 	{
 		if (str.size() <= 15)
@@ -228,6 +249,31 @@ namespace FastaCompressor
 			if (i % 4 == 3) result.push_back(1);
 		}
 		return result;
+	}
+	size_t StringHashIndex::decodeStringLength(__uint128_t val) const
+	{
+		size_t result = 0;
+		while (val != 1)
+		{
+			result += 1;
+			val >>= 2;
+		}
+		return result;
+	}
+	size_t StringHashIndex::decodeStringToStringLength(const std::string& str) const
+	{
+		size_t result = (str.size()-1) * 4;
+		uint8_t last = str.back();
+		size_t pickedInLast = 0;
+		while (last != 1)
+		{
+			result += "ACGT"[last & 3];
+			pickedInLast += 1;
+			last >>= 2;
+			assert(last != 0);
+		}
+		assert(pickedInLast <= 3);
+		return result + pickedInLast;
 	}
 	std::string StringHashIndex::decodeStringToString(std::string str) const
 	{
