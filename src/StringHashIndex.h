@@ -17,6 +17,7 @@ namespace FastaCompressor
 		size_t getIndexOrSet(const std::string& str, const size_t value);
 		size_t at(const std::string& str) const;
 		size_t size() const;
+		size_t typeCount(size_t type) const;
 		size_t countBases() const;
 		template <typename F>
 		void iterateValues(F callback) const

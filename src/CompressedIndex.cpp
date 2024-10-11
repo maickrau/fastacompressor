@@ -19,7 +19,10 @@ namespace FastaCompressor
 		k(k),
 		w(w)
 	{
-		pieceReaderCount = 0;
+		pieceReaderCount[0] = 0;
+		pieceReaderCount[1] = 0;
+		pieceReaderCount[2] = 0;
+		pieceReaderCount[3] = 0;
 		hierarchyReaderCount = 0;
 	}
 	std::vector<size_t> CompressedIndex::segmentFastaToPieces(const std::string& seq)
@@ -41,10 +44,10 @@ namespace FastaCompressor
 		}
 		std::vector<__uint128_t> shortPieces;
 		std::vector<std::string> longPieces;
-		std::vector<uint8_t> pieceType;
 		shortPieces.resize(minimizerPositions.size()-1);
 		longPieces.resize(minimizerPositions.size()-1);
-		pieceType.resize(minimizerPositions.size()-1, std::numeric_limits<uint8_t>::max());
+		std::vector<std::vector<size_t>> piecesPerType;
+		piecesPerType.resize(4);
 		for (size_t i = 1; i < minimizerPositions.size(); i++)
 		{
 			size_t start = minimizerPositions[i-1];
@@ -52,68 +55,75 @@ namespace FastaCompressor
 			std::string kmer = seq.substr(start, end-start);
 			if (kmer.size() <= 15)
 			{
-				pieceType[i-1] = 0;
+				piecesPerType[0].emplace_back(i-1);
 				shortPieces[i-1] = pieceIndex.encodeString(kmer);
 			}
 			else if (kmer.size() <= 31)
 			{
-				pieceType[i-1] = 1;
+				piecesPerType[1].emplace_back(i-1);
 				shortPieces[i-1] = pieceIndex.encodeString(kmer);
 			}
 			else if (kmer.size() <= 63)
 			{
-				pieceType[i-1] = 2;
+				piecesPerType[2].emplace_back(i-1);
 				shortPieces[i-1] = pieceIndex.encodeString(kmer);
 			}
 			else
 			{
-				pieceType[i-1] = 3;
+				piecesPerType[3].emplace_back(i-1);
 				longPieces[i-1] = pieceIndex.encodeStringToString(kmer);
 			}
 		}
 		std::vector<size_t> result;
-		result.reserve(minimizerPositions.size()-1);
-		std::vector<size_t> indicesNeedWriting;
+		result.resize(minimizerPositions.size()-1, std::numeric_limits<size_t>::max());
+		for (size_t type = 0; type < 4; type++)
 		{
-			std::lock_guard lock { pieceMutex };
-			pieceReaderCount += 1;
-		}
-		for (size_t i = 0; i < shortPieces.size(); i++)
-		{
-			size_t index = 0;
-			index = pieceIndex.getIndexOrNull(shortPieces[i], longPieces[i], pieceType[i]);
-			result.emplace_back(index);
-			if (index == std::numeric_limits<size_t>::max())
+			if (piecesPerType[type].size() == 0) continue;
+			std::vector<size_t> indicesNeedWriting;
 			{
-				indicesNeedWriting.emplace_back(i);
+				std::lock_guard lock { pieceMutex[type] };
+				pieceReaderCount[type] += 1;
 			}
-		}
-		pieceReaderCount -= 1;
-		if (pieceReaderCount == 0)
-		{
-			pieceConditionVariable.notify_one();
-		}
-		if (indicesNeedWriting.size() >= 1)
-		{
+			for (size_t i : piecesPerType[type])
 			{
-				std::unique_lock<std::mutex> lock { pieceMutex };
-				while (pieceReaderCount > 0)
+				size_t index = 0;
+				index = pieceIndex.getIndexOrNull(shortPieces[i], longPieces[i], type);
+				result[i] = index;
+				if (index == std::numeric_limits<size_t>::max())
 				{
-					pieceConditionVariable.wait_for(lock, std::chrono::milliseconds(1));
-				}
-				assert(pieceReaderCount == 0);
-				for (size_t ii = 0; ii < indicesNeedWriting.size(); ii++)
-				{
-					size_t i = indicesNeedWriting[ii];
-					size_t index = 0;
-					size_t addedIndex = pieceIndex.size()*2;
-					index = pieceIndex.getIndexOrSet(shortPieces[i], longPieces[i], pieceType[i], addedIndex);
-					result[i] = index;
+					indicesNeedWriting.emplace_back(i);
 				}
 			}
-			pieceConditionVariable.notify_one();
+			pieceReaderCount[type] -= 1;
+			if (pieceReaderCount[type] == 0)
+			{
+				pieceConditionVariable[type].notify_one();
+			}
+			if (indicesNeedWriting.size() >= 1)
+			{
+				{
+					std::unique_lock<std::mutex> lock { pieceMutex[type] };
+					while (pieceReaderCount[type] > 0)
+					{
+						pieceConditionVariable[type].wait_for(lock, std::chrono::milliseconds(1));
+					}
+					assert(pieceReaderCount[type] == 0);
+					for (size_t ii = 0; ii < indicesNeedWriting.size(); ii++)
+					{
+						size_t i = indicesNeedWriting[ii];
+						size_t index = 0;
+						size_t addedIndex = pieceIndex.typeCount(type)*8 + (type*2);
+						index = pieceIndex.getIndexOrSet(shortPieces[i], longPieces[i], type, addedIndex);
+						result[i] = index;
+					}
+				}
+				pieceConditionVariable[type].notify_one();
+			}
 		}
-		assert(result.size() == minimizerPositions.size()-1);
+		for (size_t i = 0; i < result.size(); i++)
+		{
+			assert(result[i] != std::numeric_limits<size_t>::max());
+		}
 		return result;
 	}
 	std::vector<size_t> CompressedIndex::addString(const std::string& str)
@@ -321,8 +331,8 @@ namespace FastaCompressor
 		size_t countBases = pieceIndex.countBases();
 		pieces.setMaxStringLength(k+w);
 		VariableWidthIntVector pieceReordering;
-		pieceReordering.setWidth(ceil(log2(pieceIndex.size()+1)));
-		pieceReordering.resize(pieceIndex.size());
+		pieceReordering.setWidth(ceil(log2(pieceIndex.size()*4+4)));
+		pieceReordering.resize(pieceIndex.size()*4);
 		pieces.reserve(pieceIndex.size(), countBases);
 		{
 			pieceIndex.iterateKeyValues([&pieceReordering, this](const std::string key, const size_t value)
@@ -333,7 +343,7 @@ namespace FastaCompressor
 				pieces.push_back(key);
 			});
 		}
-		assert(pieceReordering.size() == firstHierarchicalIndex);
+		//assert(pieceReordering.size() == firstHierarchicalIndex);
 		{
 			decltype(pieceIndex) tmp;
 			std::swap(tmp, pieceIndex);

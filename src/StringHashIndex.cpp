@@ -308,4 +308,20 @@ namespace FastaCompressor
 		}
 		return result;
 	}
+	size_t StringHashIndex::typeCount(size_t type) const
+	{
+		switch(type)
+		{
+		case 0:
+			return len16Strings.size();
+		case 1:
+			return len32Strings.size();
+		case 2:
+			return len64Strings.size();
+		case 3:
+			return biglenStrings.size();
+		default:
+			assert(false);
+		}
+	}
 }
