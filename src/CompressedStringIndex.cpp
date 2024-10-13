@@ -20,7 +20,8 @@ namespace FastaCompressor
 			readNames[result] = readName;
 		}
 		std::vector<size_t> indices = index.addString(readSequence);
-		size_t maxIndex = 0;
+		assert(indices.size() >= 1);
+		size_t maxIndex = 1;
 		for (size_t val : indices)
 		{
 			maxIndex = std::max(maxIndex, val);
@@ -54,7 +55,8 @@ namespace FastaCompressor
 			readNames[result] = readName;
 		}
 		std::vector<size_t> indices = index.addString(readSequence);
-		size_t maxIndex = 0;
+		assert(indices.size() >= 1);
+		size_t maxIndex = 1;
 		for (size_t val : indices)
 		{
 			maxIndex = std::max(maxIndex, val);
