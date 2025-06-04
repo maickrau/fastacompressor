@@ -1,5 +1,6 @@
 #include <cassert>
 #include <limits>
+#include "Serializer.h"
 #include "StringContainer.h"
 
 namespace FastaCompressor
@@ -106,5 +107,23 @@ namespace FastaCompressor
 	size_t StringContainer::size() const
 	{
 		return realSize;
+	}
+	void StringContainer::writeToStream(std::ostream& stream) const
+	{
+		Serializer::writeUint64_t(maxStringLength, stream);
+		Serializer::writeUint64_t(realSize, stream);
+		Serializer::writeVector<uint64_t>(bits, stream);
+		Serializer::writeVector<uint16_t>(smallOffsets, stream);
+		Serializer::writeVector<uint64_t>(bigOffsets, stream);
+	}
+	StringContainer StringContainer::loadFromStream(std::istream& stream)
+	{
+		StringContainer result;
+		result.maxStringLength = Serializer::readUint64_t(stream);
+		result.realSize = Serializer::readUint64_t(stream);
+		result.bits = Serializer::readVector<uint64_t>(stream);
+		result.smallOffsets = Serializer::readVector<uint16_t>(stream);
+		result.bigOffsets = Serializer::readVector<uint64_t>(stream);
+		return result;
 	}
 }

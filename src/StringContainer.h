@@ -1,6 +1,7 @@
 #ifndef StringContainer_h
 #define StringContainer_h
 
+#include <fstream>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -19,11 +20,13 @@ namespace FastaCompressor
 		size_t pieceSize(size_t index) const;
 		size_t size() const;
 		size_t baseCount() const;
+		void writeToStream(std::ostream& stream) const;
+		static StringContainer loadFromStream(std::istream& stream);
 	private:
 		size_t bigOffsetEveryNSmallOffsets() const;
 		std::vector<uint64_t> bits;
 		std::vector<uint16_t> smallOffsets; // end position of string
-		std::vector<size_t> bigOffsets; // end position of string
+		std::vector<uint64_t> bigOffsets; // end position of string
 		size_t maxStringLength;
 		size_t realSize;
 	};

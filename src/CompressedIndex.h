@@ -1,6 +1,7 @@
 #ifndef CompressedIndex_h
 #define CompressedIndex_h
 
+#include <fstream>
 #include <mutex>
 #include <vector>
 #include <string>
@@ -15,6 +16,19 @@ namespace FastaCompressor
 {
 	class CompressedIndex
 	{
+		struct TemporaryConstructionInfo
+		{
+		public:
+			TemporaryConstructionInfo();
+			HierarchyIndex hierarchyIndex;
+			StringHashIndex pieceIndex;
+			std::array<std::mutex, 4> pieceMutex;
+			std::array<std::atomic<size_t>, 4> pieceReaderCount;
+			std::array<std::condition_variable, 4> pieceConditionVariable;
+			std::mutex hierarchyMutex;
+			std::atomic<size_t> hierarchyReaderCount;
+			std::condition_variable hierarchyConditionVariable;
+		};
 	public:
 		CompressedIndex(size_t k, size_t w);
 		std::vector<size_t> addString(const std::string& str);
@@ -29,10 +43,10 @@ namespace FastaCompressor
 		size_t baseCount() const;
 		void removeConstructionVariables(std::vector<VariableWidthIntVector>& indices, const size_t numThreads);
 		bool frozen() const;
+		void writeToStream(std::ostream& stream) const;
+		static CompressedIndex loadFromStream(std::istream& stream);
 	private:
 		std::vector<size_t> segmentFastaToPieces(const std::string& sequence);
-		HierarchyIndex hierarchyIndex;
-		StringHashIndex pieceIndex;
 		VariableWidthIntVector hierarchyTopDownFirst;
 		VariableWidthIntVector hierarchyTopDownSecond;
 		StringContainer pieces;
@@ -41,12 +55,7 @@ namespace FastaCompressor
 		size_t bitsPerIndex;
 		size_t k;
 		size_t w;
-		std::array<std::mutex, 4> pieceMutex;
-		std::array<std::atomic<size_t>, 4> pieceReaderCount;
-		std::array<std::condition_variable, 4> pieceConditionVariable;
-		std::mutex hierarchyMutex;
-		std::atomic<size_t> hierarchyReaderCount;
-		std::condition_variable hierarchyConditionVariable;
+		std::unique_ptr<TemporaryConstructionInfo> temps;
 	};
 }
 

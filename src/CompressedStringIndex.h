@@ -1,7 +1,9 @@
 #ifndef CompressedStringIndex_h
 #define CompressedStringIndex_h
 
+#include <fstream>
 #include <mutex>
+#include <fstream>
 #include "CompressedIndex.h"
 
 namespace FastaCompressor
@@ -18,11 +20,13 @@ namespace FastaCompressor
 		void removeConstructionVariables(const size_t numThreads);
 		size_t size() const;
 		void printSizeInformation() const;
+		void writeToStream(std::ostream& stream) const;
+		static CompressedStringIndex loadFromStream(std::istream& stream);
 	private:
 		CompressedIndex index;
 		std::vector<std::string> readNames;
 		std::vector<VariableWidthIntVector> readIndices;
-		std::mutex indexMutex;
+		std::unique_ptr<std::mutex> indexMutex;
 	};
 }
 

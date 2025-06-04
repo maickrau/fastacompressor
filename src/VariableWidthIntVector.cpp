@@ -1,4 +1,5 @@
 #include <cassert>
+#include "Serializer.h"
 #include "VariableWidthIntVector.h"
 
 namespace FastaCompressor
@@ -83,5 +84,26 @@ namespace FastaCompressor
 	size_t VariableWidthIntVector::width() const
 	{
 		return bitWidth;
+	}
+	void VariableWidthIntVector::writeToStream(std::ostream& stream) const
+	{
+		Serializer::writeUint64_t(realSize, stream);
+		Serializer::writeVector<uint64_t>(data, stream);
+	}
+	VariableWidthIntVector VariableWidthIntVector::loadFromStream(const size_t width, std::istream& stream)
+	{
+		VariableWidthIntVector result;
+		result.bitWidth = width;
+		if (width == 64)
+		{
+			result.mask = -1;
+		}
+		else
+		{
+			result.mask = (1ull << width) - 1;
+		}
+		result.realSize = Serializer::readUint64_t(stream);
+		result.data = Serializer::readVector<uint64_t>(stream);
+		return result;
 	}
 }

@@ -8,10 +8,10 @@ LIBDIR=lib
 
 LIBS=`pkg-config --libs zlib`
 
-_DEPS = fastqloader.h MinimizerIterator.h CommonUtils.h CompressedIndex.h CompressedStringIndex.h VariableWidthIntVector.h StringContainer.h RankBitvector.h StringHashIndex.h HierarchyIndex.h
+_DEPS = fastqloader.h MinimizerIterator.h CommonUtils.h CompressedIndex.h CompressedStringIndex.h VariableWidthIntVector.h StringContainer.h RankBitvector.h StringHashIndex.h HierarchyIndex.h Serializer.h
 DEPS = $(patsubst %, $(SRCDIR)/%, $(_DEPS))
 
-_OBJ = fastqloader.o MinimizerIterator.o CommonUtils.o CompressedIndex.o CompressedStringIndex.o VariableWidthIntVector.o StringContainer.o RankBitvector.o StringHashIndex.o HierarchyIndex.o
+_OBJ = fastqloader.o MinimizerIterator.o CommonUtils.o CompressedIndex.o CompressedStringIndex.o VariableWidthIntVector.o StringContainer.o RankBitvector.o StringHashIndex.o HierarchyIndex.o Serializer.o
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
 LINKFLAGS = $(CPPFLAGS) -Wl,-Bstatic $(LIBS) -Wl,-Bdynamic -Wl,--as-needed -lpthread -pthread -static-libstdc++
@@ -22,12 +22,18 @@ $(shell mkdir -p bin)
 $(shell mkdir -p obj)
 $(shell mkdir -p lib)
 
-all: $(BINDIR)/test_fastacompress $(LIBDIR)/fastacompress.a $(BINDIR)/test_fastacompress_multithread
+all: $(BINDIR)/test_fastacompress $(LIBDIR)/fastacompress.a $(BINDIR)/test_fastacompress_multithread $(BINDIR)/compress $(BINDIR)/decompress
 
 lib: $(LIBDIR)/fastacompress.a
 
 $(LIBDIR)/fastacompress.a: $(OBJ) $(DEPS)
 	ar rvs $@ $(OBJ) $^
+
+$(BINDIR)/compress: $(OBJ) $(ODIR)/compress.o
+	$(GPP) -o $@ $^ $(LINKFLAGS)
+
+$(BINDIR)/decompress: $(OBJ) $(ODIR)/decompress.o
+	$(GPP) -o $@ $^ $(LINKFLAGS)
 
 $(BINDIR)/test_fastacompress: $(OBJ) $(ODIR)/test_main.o
 	$(GPP) -o $@ $^ $(LINKFLAGS)

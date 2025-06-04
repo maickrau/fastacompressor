@@ -1,5 +1,6 @@
 #include <iostream>
 #include "CompressedStringIndex.h"
+#include "Serializer.h"
 
 namespace FastaCompressor
 {
@@ -8,12 +9,13 @@ namespace FastaCompressor
 		readNames(),
 		readIndices()
 	{
+		indexMutex = std::unique_ptr<std::mutex> { new std::mutex };
 	}
 	size_t CompressedStringIndex::addString(const std::string& readName, const std::string& readSequence)
 	{
 		size_t result;
 		{
-			std::lock_guard lock { indexMutex };
+			std::lock_guard lock { *indexMutex };
 			result = readNames.size();
 			readNames.emplace_back();
 			readIndices.emplace_back();
@@ -34,7 +36,7 @@ namespace FastaCompressor
 			tmp.set(i, indices[i]);
 		}
 		{
-			std::lock_guard lock { indexMutex };
+			std::lock_guard lock { *indexMutex };
 			std::swap(tmp, readIndices[result]);
 		}
 		return result;
@@ -44,7 +46,7 @@ namespace FastaCompressor
 		size_t result;
 		result = readID;
 		{
-			std::lock_guard lock { indexMutex };
+			std::lock_guard lock { *indexMutex };
 			while (readID >= readNames.size())
 			{
 				readNames.emplace_back();
@@ -62,7 +64,7 @@ namespace FastaCompressor
 			maxIndex = std::max(maxIndex, val);
 		}
 		{
-			std::lock_guard lock { indexMutex };
+			std::lock_guard lock { *indexMutex };
 			readIndices[result].setWidth(ceil(log2(maxIndex+1)));
 			readIndices[result].resize(indices.size());
 			for (size_t i = 0; i < indices.size(); i++)
@@ -120,5 +122,46 @@ namespace FastaCompressor
 		std::cerr << "bases in piece index " << index.baseCount() << " construction bytes ~" << (index.baseCount())/1024.0/1024.0/1024.0 << " gb" << std::endl;
 		std::cerr << "count in piece index " << index.pieceCount() << " construction bytes ~" <<  (index.pieceCount()*64)/1024.0/1024.0/1024.0 << " gb" << std::endl;
 		std::cerr << "hierarchy index size " << index.maxIndex() << " construction bytes ~" << (index.maxIndex()*48)/1024.0/1024.0/1024.0 << " gb" << std::endl;
+	}
+	void CompressedStringIndex::writeToStream(std::ostream& stream) const
+	{
+		assert(index.frozen());
+		index.writeToStream(stream);
+		Serializer::writeUint64_t(readNames.size(), stream);
+		for (size_t i = 0; i < readNames.size(); i++)
+		{
+			Serializer::writeString(readNames[i], stream);
+		}
+		Serializer::writeUint64_t(readIndices.size(), stream);
+		size_t width = 0;
+		if (readIndices.size() > 0) width = readIndices[0].width();
+		Serializer::writeUint64_t(width, stream);
+		if (readIndices.size() > 0)
+		{
+			for (size_t i = 0; i < readIndices.size(); i++)
+			{
+				assert(readIndices[i].width() == width);
+				readIndices[i].writeToStream(stream);
+			}
+		}
+	}
+	CompressedStringIndex CompressedStringIndex::loadFromStream(std::istream& stream)
+	{
+		CompressedStringIndex result { 0, 0 };
+		result.index = CompressedIndex::loadFromStream(stream);
+		size_t readNameCount = Serializer::readUint64_t(stream);
+		result.readNames.reserve(readNameCount);
+		for (size_t i = 0; i < readNameCount; i++)
+		{
+			result.readNames.emplace_back(Serializer::readString(stream));
+		}
+		size_t readIndicesCount = Serializer::readUint64_t(stream);
+		size_t readIndicesWidth = Serializer::readUint64_t(stream);
+		result.readIndices.reserve(readIndicesCount);
+		for (size_t i = 0; i < readIndicesCount; i++)
+		{
+			result.readIndices.emplace_back(VariableWidthIntVector::loadFromStream(readIndicesWidth, stream));
+		}
+		return result;
 	}
 }
