@@ -102,7 +102,7 @@ int main(int argc, char** argv)
 	}
 	std::cerr << "elapsed time " << formatTime(programStartTime, getTime()) << std::endl;
 	std::cerr << "threads done, remove construction variables" << std::endl;
-	index.removeConstructionVariables();
+	index.removeConstructionVariables(numThreads);
 	std::cerr << "elapsed time " << formatTime(programStartTime, getTime()) << std::endl;
 	std::cerr << "construction done" << std::endl;
 	index.printSizeInformation();

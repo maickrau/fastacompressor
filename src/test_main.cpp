@@ -37,7 +37,7 @@ int main(int argc, char** argv)
 	});
 	std::cerr << "elapsed time " << formatTime(programStartTime, getTime()) << std::endl;
 	std::cerr << "read done, remove construction variables" << std::endl;
-	index.removeConstructionVariables();
+	index.removeConstructionVariables(1);
 	std::cerr << "elapsed time " << formatTime(programStartTime, getTime()) << std::endl;
 	index.printSizeInformation();
 	std::cerr << "elapsed time " << formatTime(programStartTime, getTime()) << std::endl;
