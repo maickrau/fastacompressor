@@ -22,17 +22,17 @@ $(shell mkdir -p bin)
 $(shell mkdir -p obj)
 $(shell mkdir -p lib)
 
-all: $(BINDIR)/fastacompress $(LIBDIR)/fastacompress.a $(BINDIR)/fastacompress_multithread
+all: $(BINDIR)/test_fastacompress $(LIBDIR)/fastacompress.a $(BINDIR)/test_fastacompress_multithread
 
 lib: $(LIBDIR)/fastacompress.a
 
 $(LIBDIR)/fastacompress.a: $(OBJ) $(DEPS)
 	ar rvs $@ $(OBJ) $^
 
-$(BINDIR)/fastacompress: $(OBJ) $(ODIR)/main.o
+$(BINDIR)/test_fastacompress: $(OBJ) $(ODIR)/test_main.o
 	$(GPP) -o $@ $^ $(LINKFLAGS)
 
-$(BINDIR)/fastacompress_multithread: $(OBJ) $(ODIR)/main_multithread.o
+$(BINDIR)/test_fastacompress_multithread: $(OBJ) $(ODIR)/test_main_multithread.o
 	$(GPP) -o $@ $^ $(LINKFLAGS)
 
 $(ODIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
