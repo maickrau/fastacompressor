@@ -1,4 +1,6 @@
 #include <iostream>
+#include <chrono>
+#include <thread>
 #include "CompressedIndex.h"
 #include "MinimizerIterator.h"
 #include "RankBitvector.h"
@@ -6,7 +8,6 @@
 namespace FastaCompressor
 {
 	CompressedIndex::CompressedIndex(size_t k, size_t w) :
-		seenOnce(),
 		hierarchyIndex(),
 		pieceIndex(),
 		hierarchyTopDownFirst(),
@@ -18,6 +19,11 @@ namespace FastaCompressor
 		k(k),
 		w(w)
 	{
+		pieceReaderCount[0] = 0;
+		pieceReaderCount[1] = 0;
+		pieceReaderCount[2] = 0;
+		pieceReaderCount[3] = 0;
+		hierarchyReaderCount = 0;
 	}
 	std::vector<size_t> CompressedIndex::segmentFastaToPieces(const std::string& seq)
 	{
@@ -38,10 +44,10 @@ namespace FastaCompressor
 		}
 		std::vector<__uint128_t> shortPieces;
 		std::vector<std::string> longPieces;
-		std::vector<uint8_t> pieceType;
 		shortPieces.resize(minimizerPositions.size()-1);
 		longPieces.resize(minimizerPositions.size()-1);
-		pieceType.resize(minimizerPositions.size()-1, std::numeric_limits<uint8_t>::max());
+		std::vector<std::vector<size_t>> piecesPerType;
+		piecesPerType.resize(4);
 		for (size_t i = 1; i < minimizerPositions.size(); i++)
 		{
 			size_t start = minimizerPositions[i-1];
@@ -49,74 +55,117 @@ namespace FastaCompressor
 			std::string kmer = seq.substr(start, end-start);
 			if (kmer.size() <= 15)
 			{
-				pieceType[i-1] = 0;
+				piecesPerType[0].emplace_back(i-1);
 				shortPieces[i-1] = pieceIndex.encodeString(kmer);
 			}
 			else if (kmer.size() <= 31)
 			{
-				pieceType[i-1] = 1;
+				piecesPerType[1].emplace_back(i-1);
 				shortPieces[i-1] = pieceIndex.encodeString(kmer);
 			}
 			else if (kmer.size() <= 63)
 			{
-				pieceType[i-1] = 2;
+				piecesPerType[2].emplace_back(i-1);
 				shortPieces[i-1] = pieceIndex.encodeString(kmer);
 			}
 			else
 			{
-				pieceType[i-1] = 3;
+				piecesPerType[3].emplace_back(i-1);
 				longPieces[i-1] = pieceIndex.encodeStringToString(kmer);
 			}
 		}
 		std::vector<size_t> result;
-		result.reserve(minimizerPositions.size()-1);
+		result.resize(minimizerPositions.size()-1, std::numeric_limits<size_t>::max());
+		for (size_t type = 0; type < 4; type++)
 		{
-			std::lock_guard lock { addStringMutex };
-			for (size_t i = 0; i < shortPieces.size(); i++)
+			if (piecesPerType[type].size() == 0) continue;
+			std::vector<size_t> indicesNeedWriting;
+			{
+				std::lock_guard lock { pieceMutex[type] };
+				pieceReaderCount[type] += 1;
+			}
+			for (size_t i : piecesPerType[type])
 			{
 				size_t index = 0;
-				size_t addedIndex = pieceIndex.size() + hierarchyIndex.size();
-				index = pieceIndex.getIndexOrSet(shortPieces[i], longPieces[i], pieceType[i], addedIndex);
-				if (index == addedIndex)
+				index = pieceIndex.getIndexOrNull(shortPieces[i], longPieces[i], type);
+				result[i] = index;
+				if (index == std::numeric_limits<size_t>::max())
 				{
-					assert(seenOnce.size() == index);
-					seenOnce.emplace_back(false);
+					indicesNeedWriting.emplace_back(i);
 				}
-				result.emplace_back(index);
+			}
+			pieceReaderCount[type] -= 1;
+			if (pieceReaderCount[type] == 0)
+			{
+				pieceConditionVariable[type].notify_one();
+			}
+			if (indicesNeedWriting.size() >= 1)
+			{
+				{
+					std::unique_lock<std::mutex> lock { pieceMutex[type] };
+					while (pieceReaderCount[type] > 0)
+					{
+						pieceConditionVariable[type].wait_for(lock, std::chrono::milliseconds(1));
+					}
+					assert(pieceReaderCount[type] == 0);
+					for (size_t ii = 0; ii < indicesNeedWriting.size(); ii++)
+					{
+						size_t i = indicesNeedWriting[ii];
+						size_t index = 0;
+						size_t addedIndex = pieceIndex.typeCount(type)*8 + (type*2);
+						index = pieceIndex.getIndexOrSet(shortPieces[i], longPieces[i], type, addedIndex);
+						result[i] = index;
+					}
+				}
+				pieceConditionVariable[type].notify_one();
 			}
 		}
-		assert(result.size() == minimizerPositions.size()-1);
+		for (size_t i = 0; i < result.size(); i++)
+		{
+			assert(result[i] != std::numeric_limits<size_t>::max());
+		}
 		return result;
 	}
 	std::vector<size_t> CompressedIndex::addString(const std::string& str)
 	{
 		auto indices = segmentFastaToPieces(str);
-		std::lock_guard lock { addStringMutex };
-		auto fixedIndices = hierarchizeIndices(indices);
-		std::vector<size_t> result;
-		for (size_t i = 0; i+1 < fixedIndices.size(); i += 2)
 		{
-			if (i > 0 && hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 1)
+			std::lock_guard<std::mutex> lock { hierarchyMutex };
+			hierarchyReaderCount += 1;
+		}
+		auto fixedIndices = hierarchizeIndices(indices);
+		hierarchyReaderCount -= 1;
+		if (hierarchyReaderCount == 0)
+		{
+			hierarchyConditionVariable.notify_one();
+		}
+		std::vector<size_t> result;
+		result.reserve(fixedIndices.size());
+		assert(fixedIndices.size() >= 1);
+		if (fixedIndices.size() >= 2)
+		{
+			std::unique_lock<std::mutex> lock { hierarchyMutex };
+			while (hierarchyReaderCount > 0)
 			{
-				result.emplace_back(hierarchyIndex.at(std::make_pair(fixedIndices[i], fixedIndices[i+1])));
+				hierarchyConditionVariable.wait_for(lock, std::chrono::milliseconds(1));
 			}
-			else if (seenOnce[fixedIndices[i]] && seenOnce[fixedIndices[i+1]])
+			assert(hierarchyReaderCount == 0);
+			for (size_t i = 0; i+1 < fixedIndices.size(); i += 2)
 			{
-				assert(hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 0);
-				size_t index = hierarchyIndex.size() + pieceIndex.size();
-				hierarchyIndex.set(std::make_pair(fixedIndices[i], fixedIndices[i+1]), index);
-				assert(seenOnce.size() == index);
-				seenOnce.emplace_back(false);
-				result.emplace_back(index);
-			}
-			else
-			{
-				seenOnce[fixedIndices[i]] = true;
-				seenOnce[fixedIndices[i+1]] = true;
-				result.emplace_back(fixedIndices[i]);
-				result.emplace_back(fixedIndices[i+1]);
+				if (hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 1)
+				{
+					result.emplace_back(hierarchyIndex.at(std::make_pair(fixedIndices[i], fixedIndices[i+1])));
+				}
+				else
+				{
+					assert(hierarchyIndex.count(std::make_pair(fixedIndices[i], fixedIndices[i+1])) == 0);
+					size_t index = hierarchyIndex.size()*2+1;
+					hierarchyIndex.set(std::make_pair(fixedIndices[i], fixedIndices[i+1]), index);
+					result.emplace_back(index);
+				}
 			}
 		}
+		hierarchyConditionVariable.notify_one();
 		if (fixedIndices.size() % 2 == 1) result.emplace_back(fixedIndices.back());
 		return result;
 	}
@@ -151,7 +200,7 @@ namespace FastaCompressor
 			while (result.size() >= 2 && hierarchyIndex.count(std::make_pair(result[result.size()-2], result[result.size()-1])) == 1)
 			{
 				size_t replacement = hierarchyIndex.at(std::make_pair(result[result.size()-2], result[result.size()-1]));
-				assert(replacement < hierarchyIndex.size() + pieceIndex.size());
+				// assert(replacement < hierarchyIndex.size() + pieceIndex.size()); // true but can't check because no lock on pieceIndex
 				result.pop_back();
 				result.pop_back();
 				result.emplace_back(replacement);
@@ -274,135 +323,111 @@ namespace FastaCompressor
 	{
 		return isfrozen;
 	}
-	void CompressedIndex::removeConstructionVariables(std::vector<VariableWidthIntVector>& indices)
+	void CompressedIndex::removeConstructionVariables(std::vector<VariableWidthIntVector>& indices, const size_t numThreads)
 	{
 		assert(!isfrozen);
-		RankBitvector indexIsPiece;
-		indexIsPiece.resize(pieceIndex.size() + hierarchyIndex.size());
-		pieceIndex.iterateValues([&indexIsPiece](size_t value)
-		{
-			indexIsPiece.set(value, true);
-		});
-		indexIsPiece.buildRanks();
 		bitsPerIndex = ceil(log2(pieceIndex.size() + hierarchyIndex.size()));
 		firstHierarchicalIndex = pieceIndex.size();
-		for (size_t i = 0; i < indices.size(); i++)
-		{
-			VariableWidthIntVector replacement;
-			replacement.setWidth(bitsPerIndex);
-			std::vector<size_t> tmp;
-			for (size_t j = 0; j < indices[i].size(); j++)
-			{
-				tmp.emplace_back(indices[i].get(j));
-			}
-			tmp = hierarchizeIndices(tmp);
-			replacement.resize(tmp.size());
-			for (size_t j = 0; j < tmp.size(); j++)
-			{
-				if (indexIsPiece.get(tmp[j]))
-				{
-					replacement.set(j, indexIsPiece.getRank(tmp[j]));
-				}
-				else
-				{
-					replacement.set(j, tmp[j] - indexIsPiece.getRank(tmp[j]) + firstHierarchicalIndex);
-				}
-			}
-			std::swap(replacement, indices[i]);
-		}
-		assert(bitsPerIndex > 0);
-		{
-			decltype(seenOnce) tmp;
-			std::swap(tmp, seenOnce);
-		}
-		hierarchyTopDownFirst.setWidth(bitsPerIndex);
-		hierarchyTopDownSecond.setWidth(bitsPerIndex);
-		hierarchyTopDownFirst.resize(hierarchyIndex.size());
-		hierarchyTopDownSecond.resize(hierarchyIndex.size());
-		hierarchyIndex.iterateKeyValues([this, &indexIsPiece](std::pair<uint64_t, uint64_t> key, size_t value)
-		{
-			size_t index = value - indexIsPiece.getRank(value);
-			assert(index < hierarchyTopDownFirst.size());
-			assert(hierarchyTopDownFirst.get(index) == 0);
-			assert(hierarchyTopDownSecond.get(index) == 0);
-			if (indexIsPiece.get(key.first))
-			{
-				hierarchyTopDownFirst.set(index, indexIsPiece.getRank(key.first));
-			}
-			else
-			{
-				hierarchyTopDownFirst.set(index, key.first - indexIsPiece.getRank(key.first) + firstHierarchicalIndex);
-			}
-			if (indexIsPiece.get(key.second))
-			{
-				hierarchyTopDownSecond.set(index, indexIsPiece.getRank(key.second));
-			}
-			else
-			{
-				hierarchyTopDownSecond.set(index, key.second - indexIsPiece.getRank(key.second) + firstHierarchicalIndex);
-			}
-		});
-		{
-			decltype(hierarchyIndex) tmp;
-			std::swap(tmp, hierarchyIndex);
-		}
-		size_t countBases = 0;
-		pieceIndex.iterateKeyValues([&countBases](const std::string key, const size_t value)
-		{
-			countBases += key.size();
-		});
+		size_t countBases = pieceIndex.countBases();
 		pieces.setMaxStringLength(k+w);
 		VariableWidthIntVector pieceReordering;
-		pieceReordering.setWidth(ceil(log2(pieceIndex.size()+1)));
-		pieceReordering.resize(pieceIndex.size());
+		pieceReordering.setWidth(ceil(log2(pieceIndex.size()*4+4)));
+		pieceReordering.resize(pieceIndex.size()*4);
 		pieces.reserve(pieceIndex.size(), countBases);
 		{
-			pieceIndex.iterateKeyValues([&indexIsPiece, &pieceReordering, this](const std::string key, const size_t value)
+			pieceIndex.iterateKeyValues([&pieceReordering, this](const std::string key, const size_t value)
 			{
-				size_t index = indexIsPiece.getRank(value);
+				size_t index = value / 2;
 				assert(pieceReordering.get(index) == 0);
 				pieceReordering.set(index, pieces.size());
 				pieces.push_back(key);
 			});
 		}
-		std::vector<bool> valueFound;
-		valueFound.resize(pieceIndex.size(), false);
-		for (size_t i = 0; i < pieceReordering.size(); i++)
-		{
-			assert(!valueFound[pieceReordering.get(i)]);
-			assert(pieceReordering.get(i) < valueFound.size());
-			valueFound[pieceReordering.get(i)] = true;
-		}
-		assert(pieceReordering.size() == firstHierarchicalIndex);
-		for (size_t i = 0; i < indices.size(); i++)
-		{
-			for (size_t j = 0; j < indices[i].size(); j++)
-			{
-				if (indices[i].get(j) < pieceReordering.size())
-				{
-					size_t newValue = pieceReordering.get(indices[i].get(j));
-					indices[i].set(j, newValue);
-					assert(indices[i].get(j) == newValue);
-				}
-			}
-		}
-		for (size_t i = 0; i < hierarchyTopDownFirst.size(); i++)
-		{
-			if (hierarchyTopDownFirst.get(i) < pieceReordering.size())
-			{
-				hierarchyTopDownFirst.set(i, pieceReordering.get(hierarchyTopDownFirst.get(i)));
-			}
-		}
-		for (size_t i = 0; i < hierarchyTopDownSecond.size(); i++)
-		{
-			if (hierarchyTopDownSecond.get(i) < pieceReordering.size())
-			{
-				hierarchyTopDownSecond.set(i, pieceReordering.get(hierarchyTopDownSecond.get(i)));
-			}
-		}
+		//assert(pieceReordering.size() == firstHierarchicalIndex);
 		{
 			decltype(pieceIndex) tmp;
 			std::swap(tmp, pieceIndex);
+		}
+		std::vector<std::thread> threads;
+		std::atomic<size_t> indexIndex;
+		indexIndex = 0;
+		std::mutex indexMutex;
+		for (size_t threadi = 0; threadi < std::max((size_t)1, (size_t)numThreads-1); threadi++)
+		{
+			threads.emplace_back([this, &indexIndex, &indexMutex, &indices, &pieceReordering]()
+			{
+				while (true)
+				{
+					size_t i = indices.size();
+					{
+						std::lock_guard<std::mutex> lock { indexMutex };
+						i = indexIndex;
+						indexIndex += 1;
+					}
+					if (i >= indices.size()) break;
+					VariableWidthIntVector replacement;
+					replacement.setWidth(bitsPerIndex);
+					std::vector<size_t> tmp;
+					for (size_t j = 0; j < indices[i].size(); j++)
+					{
+						tmp.emplace_back(indices[i].get(j));
+					}
+					tmp = hierarchizeIndices(tmp);
+					replacement.resize(tmp.size());
+					for (size_t j = 0; j < tmp.size(); j++)
+					{
+						if (tmp[j] % 2 == 0)
+						{
+							replacement.set(j, pieceReordering.get(tmp[j]/2));
+						}
+						else
+						{
+							replacement.set(j, (tmp[j]-1) / 2 + firstHierarchicalIndex);
+						}
+					}
+					std::swap(replacement, indices[i]);
+				}
+			});
+		}
+		if (numThreads == 1) threads[0].join();
+		assert(bitsPerIndex > 0);
+		hierarchyTopDownFirst.setWidth(bitsPerIndex);
+		hierarchyTopDownSecond.setWidth(bitsPerIndex);
+		hierarchyTopDownFirst.resize(hierarchyIndex.size());
+		hierarchyTopDownSecond.resize(hierarchyIndex.size());
+		hierarchyIndex.iterateKeyValues([this, &pieceReordering](std::pair<uint64_t, uint64_t> key, size_t value)
+		{
+			size_t index = (value-1) / 2;
+			assert(index < hierarchyTopDownFirst.size());
+			assert(hierarchyTopDownFirst.get(index) == 0);
+			assert(hierarchyTopDownSecond.get(index) == 0);
+			if (key.first % 2 == 0)
+			{
+				hierarchyTopDownFirst.set(index, pieceReordering.get(key.first / 2));
+			}
+			else
+			{
+				hierarchyTopDownFirst.set(index, (key.first-1) / 2 + firstHierarchicalIndex);
+			}
+			if (key.second % 2 == 0)
+			{
+				hierarchyTopDownSecond.set(index, pieceReordering.get(key.second / 2));
+			}
+			else
+			{
+				hierarchyTopDownSecond.set(index, (key.second-1) / 2 + firstHierarchicalIndex);
+			}
+		});
+		if (numThreads > 1)
+		{
+			for (size_t threadi = 0; threadi < threads.size(); threadi++)
+			{
+				threads[threadi].join();
+			}
+		}
+		{
+			decltype(hierarchyIndex) tmp;
+			std::swap(tmp, hierarchyIndex);
 		}
 		isfrozen = true;
 	}

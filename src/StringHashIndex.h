@@ -12,10 +12,13 @@ namespace FastaCompressor
 	public:
 		bool count(const std::string& str) const;
 		void setIndex(const std::string& str, const size_t value);
+		size_t getIndexOrNull(const __uint128_t shortPiece, const std::string& longPiece, const uint8_t pieceType) const;
 		size_t getIndexOrSet(const __uint128_t shortPiece, const std::string& longPiece, const uint8_t pieceType, const size_t value);
 		size_t getIndexOrSet(const std::string& str, const size_t value);
 		size_t at(const std::string& str) const;
 		size_t size() const;
+		size_t typeCount(size_t type) const;
+		size_t countBases() const;
 		template <typename F>
 		void iterateValues(F callback) const
 		{
@@ -50,6 +53,8 @@ namespace FastaCompressor
 		__uint128_t encodeString(const std::string& str) const;
 		std::string encodeStringToString(const std::string& str) const;
 	private:
+		size_t decodeStringToStringLength(const std::string& str) const;
+		size_t decodeStringLength(__uint128_t val) const;
 		std::string decodeString(__uint128_t str) const;
 		std::string decodeStringToString(std::string str) const;
 		phmap::flat_hash_map<uint32_t, size_t> len16Strings;

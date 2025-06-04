@@ -15,7 +15,7 @@ namespace FastaCompressor
 		std::string getName(const size_t index) const;
 		std::string getSequence(const size_t index) const;
 		std::string getSubstring(const size_t index, const size_t startPos, const size_t length) const;
-		void removeConstructionVariables();
+		void removeConstructionVariables(const size_t numThreads);
 		size_t size() const;
 		void printSizeInformation() const;
 	private:

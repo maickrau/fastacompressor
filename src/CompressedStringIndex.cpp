@@ -20,19 +20,22 @@ namespace FastaCompressor
 			readNames[result] = readName;
 		}
 		std::vector<size_t> indices = index.addString(readSequence);
-		size_t maxIndex = 0;
+		assert(indices.size() >= 1);
+		size_t maxIndex = 1;
 		for (size_t val : indices)
 		{
 			maxIndex = std::max(maxIndex, val);
 		}
+		VariableWidthIntVector tmp;
+		tmp.setWidth(ceil(log2(maxIndex+1)));
+		tmp.resize(indices.size());
+		for (size_t i = 0; i < indices.size(); i++)
+		{
+			tmp.set(i, indices[i]);
+		}
 		{
 			std::lock_guard lock { indexMutex };
-			readIndices[result].setWidth(ceil(log2(maxIndex+1)));
-			readIndices[result].resize(indices.size());
-			for (size_t i = 0; i < indices.size(); i++)
-			{
-				readIndices[result].set(i, indices[i]);
-			}
+			std::swap(tmp, readIndices[result]);
 		}
 		return result;
 	}
@@ -52,7 +55,8 @@ namespace FastaCompressor
 			readNames[result] = readName;
 		}
 		std::vector<size_t> indices = index.addString(readSequence);
-		size_t maxIndex = 0;
+		assert(indices.size() >= 1);
+		size_t maxIndex = 1;
 		for (size_t val : indices)
 		{
 			maxIndex = std::max(maxIndex, val);
@@ -85,9 +89,9 @@ namespace FastaCompressor
 		assert(index.frozen());
 		return index.getString(readIndices[i]);
 	}
-	void CompressedStringIndex::removeConstructionVariables()
+	void CompressedStringIndex::removeConstructionVariables(const size_t numThreads)
 	{
-		index.removeConstructionVariables(readIndices);
+		index.removeConstructionVariables(readIndices, numThreads);
 	}
 	size_t CompressedStringIndex::size() const
 	{

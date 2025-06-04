@@ -13,6 +13,27 @@ namespace std
 
 namespace FastaCompressor
 {
+	size_t StringHashIndex::countBases() const
+	{
+		size_t result = 0;
+		for (auto pair : len16Strings)
+		{
+			result += decodeStringLength(pair.first);
+		}
+		for (auto pair : len32Strings)
+		{
+			result += decodeStringLength(pair.first);
+		}
+		for (auto pair : len64Strings)
+		{
+			result += decodeStringLength(pair.first);
+		}
+		for (const auto& pair : biglenStrings)
+		{
+			result += decodeStringToStringLength(pair.first);
+		}
+		return result;
+	}
 	bool StringHashIndex::count(const std::string& str) const
 	{
 		if (str.size() <= 15)
@@ -57,6 +78,31 @@ namespace FastaCompressor
 		}
 		auto fixstr = encodeStringToString(str);
 		return biglenStrings.at(fixstr);
+	}
+	size_t StringHashIndex::getIndexOrNull(const __uint128_t shortPiece, const std::string& longPiece, const uint8_t pieceType) const
+	{
+		switch(pieceType)
+		{
+		case 0:
+			assert(shortPiece < (__uint128_t)std::numeric_limits<uint32_t>::max());
+			if (len16Strings.count(shortPiece) == 1) return len16Strings.at(shortPiece);
+			return std::numeric_limits<size_t>::max();
+		case 1:
+			assert(shortPiece < (__uint128_t)std::numeric_limits<uint64_t>::max());
+			if (len32Strings.count(shortPiece) == 1) return len32Strings.at(shortPiece);
+			return std::numeric_limits<size_t>::max();
+		case 2:
+			if (len64Strings.count(shortPiece) == 1) return len64Strings.at(shortPiece);
+			return std::numeric_limits<size_t>::max();
+		case 3:
+			{
+				auto found = biglenStrings.find(longPiece);
+				if (found != biglenStrings.end()) return found->second;
+				return std::numeric_limits<size_t>::max();
+			}
+		default:
+			assert(false);
+		}
 	}
 	size_t StringHashIndex::getIndexOrSet(const __uint128_t shortPiece, const std::string& longPiece, const uint8_t pieceType, const size_t value)
 	{
@@ -204,6 +250,31 @@ namespace FastaCompressor
 		}
 		return result;
 	}
+	size_t StringHashIndex::decodeStringLength(__uint128_t val) const
+	{
+		size_t result = 0;
+		while (val != 1)
+		{
+			result += 1;
+			val >>= 2;
+		}
+		return result;
+	}
+	size_t StringHashIndex::decodeStringToStringLength(const std::string& str) const
+	{
+		size_t result = (str.size()-1) * 4;
+		uint8_t last = str.back();
+		size_t pickedInLast = 0;
+		while (last != 1)
+		{
+			result += "ACGT"[last & 3];
+			pickedInLast += 1;
+			last >>= 2;
+			assert(last != 0);
+		}
+		assert(pickedInLast <= 3);
+		return result + pickedInLast;
+	}
 	std::string StringHashIndex::decodeStringToString(std::string str) const
 	{
 		std::string result;
@@ -236,5 +307,21 @@ namespace FastaCompressor
 			val >>= 2;
 		}
 		return result;
+	}
+	size_t StringHashIndex::typeCount(size_t type) const
+	{
+		switch(type)
+		{
+		case 0:
+			return len16Strings.size();
+		case 1:
+			return len32Strings.size();
+		case 2:
+			return len64Strings.size();
+		case 3:
+			return biglenStrings.size();
+		default:
+			assert(false);
+		}
 	}
 }
