@@ -22,12 +22,15 @@ $(shell mkdir -p bin)
 $(shell mkdir -p obj)
 $(shell mkdir -p lib)
 
-all: $(BINDIR)/test_fastacompress $(LIBDIR)/fastacompress.a $(BINDIR)/test_fastacompress_multithread $(BINDIR)/compress $(BINDIR)/decompress
+all: $(BINDIR)/test_fastacompress $(LIBDIR)/fastacompress.a $(BINDIR)/test_fastacompress_multithread $(BINDIR)/compress $(BINDIR)/decompress $(BINDIR)/example
 
 lib: $(LIBDIR)/fastacompress.a
 
 $(LIBDIR)/fastacompress.a: $(OBJ) $(DEPS)
 	ar rvs $@ $(OBJ) $^
+
+$(BINDIR)/example: $(OBJ) $(ODIR)/example.o
+	$(GPP) -o $@ $^ $(LINKFLAGS)
 
 $(BINDIR)/compress: $(OBJ) $(ODIR)/compress.o
 	$(GPP) -o $@ $^ $(LINKFLAGS)
