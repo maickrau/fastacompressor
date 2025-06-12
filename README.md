@@ -11,7 +11,7 @@ See src/example.cpp
 | Dataset | ONT r10.4.1 human 30x | ONT r10.4.1 human 55x | HiFi human 32x |
 | ----- | ----- | ----- | ----- |
 | Base pairs | 90 G | 165 G | 96 G |
-| Index size | 13 Gb | 23 Gb | 14 Gb |
+| Index size | 14 Gb | 23 Gb | 14 Gb |
 | Bits per base pair | 1.3 | 1.1 | 1.2 |
 | Index construction peak memory | 43 Gb | 77 Gb | 43 Gb |
 | Index construction CPU-time (8 cores) | 3h10min | 3h30min | 3h30min |
