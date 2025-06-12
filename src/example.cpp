@@ -1,6 +1,6 @@
 #include <string>
 #include <cassert>
-#include "CompressedStringIndex.h"
+#include "CompressedStringIndex.h" // include this
 
 int main(int argc, char** argv)
 {
@@ -20,17 +20,18 @@ int main(int argc, char** argv)
 	// all sequences must be added to the index before sequences can be read from the index
 	// only ACTG characters are allowed in the sequences. Lowercase and uppercase are considered the same character
 	// any characters are allowed in names
-	// adding sequences is thread safe and multiple threads can add sequences at the same time without locking
+	// adding sequences is thread safe and multiple threads can add sequences at the same time without locks
 
 	// after all reads have been added, freeze the index
 	index.removeConstructionVariables(numThreads);
 	// now the index is compressed and immutable
 
-	// read names and sequences can be recovered
+	// read names and sequences can now be recovered
 	assert(index.getSequence(2) == "AGCGGGCAGTCAGTCAGTAGTGTCAGTCAGTAGTC");
 	assert(index.getName(2) == "read2");
 	assert(index.getName(readID) == "readN");
 	// accessing sequences and names is thread safe and multiple threads can read at the same time
+	assert(index.size() == 4); // size is the number of sequences present in the index
 
 	// substrings can be extracted slightly faster with a specialized function instead of extracting the entire read
 	assert(index.getSubstring(2, 5, 10) == index.getSequence(2).substr(5, 10));
