@@ -8,7 +8,7 @@ See src/example.cpp
 
 ### Compression
 
-| Dataset | ONT human 30x | ONT human 55x | HiFi human 32x |
+| Dataset | ONT r10.4.1 human 30x | ONT r10.4.1 human 55x | HiFi human 32x |
 | ----- | ----- | ----- | ----- |
 | Base pairs | 90 G | 165 G | 96 G |
 | Index size | 13 Gb | 23 Gb | 14 Gb |
