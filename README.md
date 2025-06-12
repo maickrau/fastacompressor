@@ -6,15 +6,17 @@ Repeat-compressed DNA sequence index. The index can store reads composed of char
 
 See src/example.cpp
 
-### Advantages
+### Compression
 
-Decent speed random access.
+| Dataset | ONT human 30x | ONT human 55x | HiFi human 32x |
+| ----- | ----- | ----- | ----- |
+| Base pairs | 90 G | 165 G | 96 G |
+| Index size | 13 Gb | 23 Gb | 14 Gb |
+| Bits per base pair | 1.3 | 1.1 | 1.2 |
+| Index construction peak memory | 43 Gb | 77 Gb | 43 Gb |
+| CPU-time (8 cores) | 3h10min | 3h30min | 3h30min |
 
-Low memory use for built index: 90Gb of sequence (30x coverage human nanopore) becomes 13Gb index (~1.3 bits per bp). 165Gb sequence becomes 23Gb (~1.1 bits per bp).
-
-### Disadvantages
-
-Building the index requires more memory than storing the built index: 90Gb of sequence requires peak 43Gb of memory to build the index. 165Gb sequence requires 77Gb.
+### Limitation
 
 No non-ATCG characters.
 
