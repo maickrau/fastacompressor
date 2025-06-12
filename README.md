@@ -14,7 +14,7 @@ See src/example.cpp
 | Index size | 14 Gb | 23 Gb | 14 Gb |
 | Bits per base pair | 1.3 | 1.1 | 1.2 |
 | Index construction peak memory | 43 Gb | 77 Gb | 43 Gb |
-| Index construction CPU-time (8 cores) | 3h10min | 3h30min | 3h30min |
+| Index construction CPU-time (8 cores) |  | 3h30min | 3h30min |
 
 ### Limitation
 
